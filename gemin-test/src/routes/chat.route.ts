@@ -1,165 +1,220 @@
-// src/routes/chat.route.ts
+// src/services/ai.service.ts
 
-import { ChatService } from "../services/chat.service.ts";
-import { processAIRequest, parseFormDataToContents } from "../services/ai.service.ts";
-import { Client } from "jsr:@db/postgres";
-import { Message } from "../database/models/message.ts";
-import { Modality } from "npm:@google/genai"; // 确保这里是 @google/genai
+import { GoogleGenAI, Modality, GenerateContentResult, GenerateContentStreamResult, Part, Content } from "npm:@google/genai"; // 确保导入了类型
+import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 
-let dbClient: Client | null = null;
-const decoder = new TextDecoder();
+/**
+ * Parses FormData to extract text input and file content for AI model.
+ * Handles base64 encoding for smaller files and uploads/references for larger ones.
+ * @param formData The FormData object from the request.
+ * @param inputText The main text input from the user.
+ * @param apikey The API key to initialize GoogleGenAI for file uploads.
+ * @returns An array of content parts suitable for the Gemini API.
+ */
+export async function parseFormDataToContents(formData: FormData, inputText: string, apikey: string): Promise<Array<Part>> {
+  const contents: Array<Part> = [];
 
-export async function initializeDatabaseClient(client: Client) {
-  dbClient = client;
-}
-
-export async function handleChatRequest(req: Request): Promise<Response> {
-  if (!dbClient) {
-    console.error("数据库客户端未初始化！");
-    return new Response("服务器错误: 数据库客户端未初始化", { status: 500 });
+  if (inputText) {
+    contents.push({ text: inputText });
   }
 
-  const chatService = new ChatService(dbClient);
-
-  if (req.method === "POST") {
-    try {
-      const formData = await req.formData();
-      const chatIdParam = formData.get('chatId');
-      const model = formData.get('model')?.toString();
-      const apikey = formData.get('apikey')?.toString();
-      const messageText = formData.get('input')?.toString() || '';
-      const streamEnabled = formData.get('stream') === 'true';
-
-      if (!model || !apikey) {
-        return new Response("请求体中缺少模型或API密钥", { status: 400 });
-      }
-
-      let currentChatId: number;
-      if (chatIdParam) {
-        currentChatId = parseInt(chatIdParam as string, 10);
-        const existingChat = await chatService.chatRepository.getChatById(currentChatId);
-        if (!existingChat) {
-          console.warn(`收到的chatId: ${chatIdParam} 不存在，创建新聊天。`);
-          currentChatId = await chatService.createNewChat();
-        }
-      } else {
-        currentChatId = await chatService.createNewChat();
-        console.log(`已创建新聊天，ID: ${currentChatId}`);
-      }
-
-      // 解析用户当前输入（文本和文件）为 AI 模型所需的 content parts
-      // 传递 apikey 给 parseFormDataToContents 用于内部的文件上传服务初始化
-      const userContentParts = await parseFormDataToContents(formData, messageText, apikey);
-      
-      if (userContentParts.length === 0) {
-        return new Response("没有提供文本或文件", { status: 400 });
-      }
-
-      // 将用户消息（包括文件部分）保存到数据库
-      await chatService.addMessageToChat(currentChatId, "user", userContentParts);
-      console.log(`用户消息已保存到数据库 (Chat ID: ${currentChatId}):`, userContentParts);
-
-      // 从数据库中检索完整的聊天历史
-      const historyMessages = await chatService.getChatHistory(currentChatId);
-
-      // 构建传递给 AI 模型的完整 'contents' 数组
-      const fullAiContents: Array<any> = [];
-      for (const msg of historyMessages) {
-          // msg.content 现在已经是 parts 数组，直接使用
-          fullAiContents.push({
-              role: msg.role,
-              parts: msg.content // 数据库中存的就是 parts 数组，直接用
-          });
-      }
-
-      const responseModalities: Modality[] = [];
-      if (model === 'gemini-2.0-flash-preview-image-generation') {
-        responseModalities.push(Modality.TEXT, Modality.IMAGE);
-      }
-
-      // 调用 AI service 之前，再次检查 apikey 是否存在
-      if (!apikey) {
-        return new Response("API Key is missing for AI service call.", { status: 400 });
-      }
-
-      const aiResponse = await processAIRequest(model, apikey, fullAiContents, streamEnabled, responseModalities);
-
-      if (streamEnabled) {
-        const aiMessageParts: any[] = [];
-        const encoder = new TextEncoder();
-        const responseBody = new ReadableStream({
-          async start(controller) {
-            const reader = (aiResponse as ReadableStream<Uint8Array>).getReader();
-            let buffer = '';
-            try {
-              while (true) {
-                const { value, done } = await reader.read();
-                if (done) break;
-
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || '';
-
-                for (const line of lines) {
-                  if (line.trim()) {
-                    try {
-                      const parts = JSON.parse(line);
-                      aiMessageParts.push(...parts);
-                      controller.enqueue(encoder.encode(line + '\n'));
-                    } catch (e) {
-                      console.error('解析AI流式响应JSON块时出错:', e);
-                    }
-                  }
-                }
-              }
-              if (buffer.trim()) {
-                try {
-                  const parts = JSON.parse(buffer);
-                  aiMessageParts.push(...parts);
-                  controller.enqueue(encoder.encode(buffer + '\n'));
-                } catch (e) {
-                  console.error('解析AI流式响应最终缓冲时出错:', e);
-                }
-              }
-            } catch (error) {
-              console.error("AI流式响应处理过程中发生错误:", error);
-              controller.error(error);
-            } finally {
-              controller.close();
-              // 在整个流接收完毕后保存 AI 响应
-              await chatService.addMessageToChat(currentChatId, "model", aiMessageParts);
-              console.log(`AI流式响应已保存到数据库 (Chat ID: ${currentChatId}):`, aiMessageParts);
-            }
-          }
-        });
-
-        return new Response(responseBody, {
-          headers: {
-            'Content-Type': 'application/x-ndjson',
-            'Transfer-Encoding': 'chunked',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'X-Chat-ID': currentChatId.toString(),
-          }
-        });
-
-      } else {
-        const aiMessageParts = aiResponse as Message['content']; // 现在期望 Array<any>
-
-        // 保存 AI 响应到数据库
-        await chatService.addMessageToChat(currentChatId, "model", aiMessageParts);
-        console.log(`AI非流式响应已保存到数据库 (Chat ID: ${currentChatId}):`, aiMessageParts);
-
-        return new Response(JSON.stringify({ chatId: currentChatId, response: aiMessageParts }), {
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-
-    } catch (error) {
-      console.error("处理聊天请求时发生错误:", error);
-      return new Response(`处理聊天消息时出错: ${error.message}`, { status: 500 });
+  const fileEntries: Array<[string, File]> = [];
+  for (const [key, value] of formData.entries()) {
+    if (value instanceof File) {
+      fileEntries.push([key, value]);
     }
   }
 
-  return new Response("未找到", { status: 404 });
+  if (!apikey) {
+    console.error("API Key not provided for file upload service.");
+    throw new Error("API Key is required for file uploads.");
+  }
+
+  const aiForFiles = new GoogleGenAI({ apiKey: apikey });
+
+  for (const [_key, file] of fileEntries) {
+    const fileSizeLimitForBase64 = 5 * 1024 * 1024; // 5MB
+    const isVideoFile = file.type.startsWith('video/');
+    const isAudioFile = file.type.startsWith('audio/');
+    const shouldUseFileAPI = isVideoFile || isAudioFile || file.size > fileSizeLimitForBase64;
+
+    try {
+      if (shouldUseFileAPI) {
+        console.log(`正在通过 File API 上传文件: ${file.name}, 类型: ${file.type}, 大小: ${(file.size / (1024 * 1024)).toFixed(2)}MB`);
+        const uploadResult = await aiForFiles.files.upload({
+          file: file,
+          config: {
+            mimeType: file.type,
+            displayName: file.name,
+          }
+        });
+        if (!uploadResult.file || !uploadResult.file.uri) {
+          console.error("File upload result did not contain expected file URI:", uploadResult);
+          throw new Error(`文件上传成功但未返回有效的URI: ${file.name}`);
+        }
+        console.log(`文件上传完成 ${file.name}, URI: ${uploadResult.file.uri}`);
+        contents.push({
+          fileData: {
+            mimeType: file.type,
+            uri: uploadResult.file.uri,
+          },
+        });
+      } else {
+        console.log(`正在进行 Base64 编码: ${file.name}, 类型: ${file.type}, 大小: ${(file.size / (1024 * 1024)).toFixed(2)}MB`);
+        const fileBuffer = await file.arrayBuffer();
+        const base64Data = encodeBase64(new Uint8Array(fileBuffer));
+        contents.push({
+          inlineData: {
+            mimeType: file.type,
+            data: base64Data,
+          },
+        });
+      }
+    } catch (fileProcessError) {
+      console.error(`处理文件 ${file.name} 时出错:`, fileProcessError);
+      let detailedMessage = `处理文件失败: ${file.name}`;
+      if (fileProcessError instanceof Error) {
+          detailedMessage += ` - ${fileProcessError.message}`;
+          // deno-lint-ignore no-explicit-any
+          const googleError = fileProcessError as any;
+          if (googleError.error && googleError.error.message) {
+              detailedMessage += ` (Google API Error: ${googleError.error.message})`;
+          } else if (googleError.message && googleError.message.includes("fetch")) {
+              detailedMessage += ` (可能是网络或API Key权限问题)`;
+          } else if (googleError.message && googleError.message.includes("User location is not supported")){
+              detailedMessage += ` (Google API 错误: 用户地理位置不支持此操作，请检查代理或VPN设置)`;
+          }
+      } else if (typeof fileProcessError === 'object' && fileProcessError !== null) {
+          // deno-lint-ignore no-explicit-any
+          const errorObj = fileProcessError as any;
+          if (errorObj.error && errorObj.error.message) {
+               detailedMessage += ` - Google API 错误: ${errorObj.error.message}`;
+          } else {
+              try {
+                  detailedMessage += ` - 错误详情: ${JSON.stringify(fileProcessError)}`;
+              } catch (e) {
+                  detailedMessage += ` - (无法序列化错误对象)`;
+              }
+          }
+      } else {
+          detailedMessage += ` - 未知错误类型`;
+      }
+      console.error(`完整错误对象详情 (fileProcessError in parseFormDataToContents):`, JSON.stringify(fileProcessError, Object.getOwnPropertyNames(fileProcessError), 2));
+      throw new Error(detailedMessage);
+    }
+  }
+  return contents;
+}
+
+/**
+ * Processes an AI request by interacting with the Google Gemini API.
+ * This function handles both streamed and non-streamed responses.
+ */
+export async function processAIRequest(
+  model: string,
+  apikey: string,
+  contents: Content[], // 明确类型为 Content[]
+  streamEnabled: boolean,
+  responseModalities: Modality[] = []
+): Promise<ReadableStream<Uint8Array> | Array<Part>> {
+  if (!apikey) {
+    throw new Error("API Key is missing.");
+  }
+  if (!contents || contents.length === 0 || contents.every(content => !content.parts || content.parts.length === 0)) {
+    throw new Error("No content provided to AI model for processing.");
+  }
+
+  const aiForGenerate = new GoogleGenAI({ apiKey: apikey });
+
+  // deno-lint-ignore no-explicit-any
+  const generationConfig: any = {};
+  if (responseModalities.length > 0) {
+    generationConfig.responseMimeTypes = responseModalities;
+  }
+
+  try {
+    if (streamEnabled) {
+      const streamResult: GenerateContentStreamResult = await aiForGenerate.models.generateContentStream({
+        model: model,
+        contents: contents,
+        generationConfig: generationConfig,
+      });
+
+      const encoder = new TextEncoder();
+      return new ReadableStream({
+        async start(controller) {
+          try {
+            for await (const chunk of streamResult.stream) {
+              if (chunk.candidates && chunk.candidates.length > 0 && chunk.candidates[0].content && chunk.candidates[0].content.parts) {
+                controller.enqueue(encoder.encode(JSON.stringify(chunk.candidates[0].content.parts) + '\n'));
+              } else if (chunk.candidates && chunk.candidates.length > 0 && chunk.candidates[0].finishReason) {
+                // console.log("Stream chunk with finishReason:", chunk.candidates[0].finishReason);
+              } else if (chunk.promptFeedback) {
+                // console.warn("Stream received promptFeedback:", chunk.promptFeedback);
+              }
+            }
+            controller.close();
+          } catch (error) {
+            console.error("Error during AI stream processing:", error);
+            console.error(`完整错误对象详情 (stream processing error in processAIRequest):`, JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+            controller.error(error);
+          }
+        }
+      });
+    } else { // 非流式
+      // 注意：这里的 result 类型是 GenerateContentResponse，但为了简单起见，我们直接用 any，然后检查其结构
+      // SDK 更新后，GenerateContentResult 可能直接就是 GenerateContentResponse 的内容
+      // deno-lint-ignore no-explicit-any
+      const result: any = await aiForGenerate.models.generateContent({
+        model: model,
+        contents: contents,
+        generationConfig: generationConfig,
+      });
+      
+      // --- 关键修正点 ---
+      // 直接从 result 访问 candidates，因为日志显示 result.response 是 undefined
+      if (result && result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts) {
+        return result.candidates[0].content.parts; // 返回 Part[]
+      } else {
+        // 如果上面的条件不满足，记录详细的 result 结构
+        console.error("AI服务返回了意外的结构 (non-stream). 实际响应内容 (result):", JSON.stringify(result, null, 2));
+        throw new Error("AI服务返回了意外的结构 (non-stream)");
+      }
+    }
+  } catch (error) {
+    console.error("Error generating content from AI model:", error);
+    let detailedMessage = `AI模型生成内容错误`;
+    if (error instanceof Error) {
+        detailedMessage += ` - ${error.message}`;
+        // deno-lint-ignore no-explicit-any
+        const googleError = error as any;
+        if (googleError.error && googleError.error.message) {
+            detailedMessage += ` (Google API Error: ${googleError.error.message})`;
+        } else if (googleError.message && googleError.message.includes("API key not valid")) {
+            detailedMessage += ` (请检查API Key是否有效或已启用Gemini API)`;
+        } else if (googleError.message && googleError.message.includes("User location is not supported")){
+             detailedMessage += ` (Google API 错误: 用户地理位置不支持此操作，请检查代理或VPN设置)`;
+        } else if (googleError.response && googleError.response.promptFeedback) {
+             detailedMessage += ` (请求可能因安全或其他策略被阻止: ${JSON.stringify(googleError.response.promptFeedback)})`;
+        }
+    } else if (typeof error === 'object' && error !== null) {
+        // deno-lint-ignore no-explicit-any
+        const errorObj = error as any;
+        if (errorObj.error && errorObj.error.message) {
+             detailedMessage += ` - Google API 错误: ${errorObj.error.message}`;
+        } else if (errorObj.response && errorObj.response.promptFeedback) {
+             detailedMessage += ` (请求可能因安全或其他策略被阻止: ${JSON.stringify(errorObj.response.promptFeedback)})`;
+        } else {
+            try {
+                detailedMessage += ` - 错误详情: ${JSON.stringify(error)}`;
+            } catch (e) {
+                detailedMessage += ` - (无法序列化错误对象)`;
+            }
+        }
+    } else {
+        detailedMessage += ` - 未知错误类型`;
+    }
+    console.error(`完整AI生成错误对象详情 (processAIRequest catch block):`, JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+    throw new Error(detailedMessage);
+  }
 }
