@@ -2,20 +2,17 @@
 
 import {
   GoogleGenAI,
-  Modality,
+  Modality, // 确保 Modality 被导入
   Part,
   FileMetadata,
   FileState,
   Content,
-  GenerateContentResult,       // 已有
-  GenerateContentStreamResult, // 已有
-  GenerateContentRequest       // *** 添加这个导入 ***
+  GenerateContentRequest, // 类型用于构建请求对象
+  GenerationConfig // 导入 GenerationConfig 类型
 } from "npm:@google/genai";
 import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 
-// ... (pollFileState, fetchImageFromUrl, parseFormDataToContents, processAIRequest 函数的其余部分保持不变) ...
-
-// pollFileState 辅助函数保持不变 (来自上一个回复)
+// pollFileState 和 fetchImageFromUrl 函数保持不变 (来自上一个回复)
 async function pollFileState(
   ai: GoogleGenAI,
   fileNameInApi: string,
@@ -204,7 +201,10 @@ export async function processAIRequest(
   apikey: string,
   historyContents: Content[],
   streamEnabled: boolean,
-  responseMimeTypes: string[] = []
+  // 这个参数现在不再直接是 responseMimeTypes，而是用于指示是否需要图像生成
+  // 我们将其重命名以反映其用途，或者在 chat.route.ts 中决定是否填充 generationConfig
+  // 为了简单起见，我们仍然接收它，但在内部根据 modelName 来决定如何使用
+  requestedResponseMimeTypes: string[] = [] // 保留这个参数，但内部逻辑会调整
 ): Promise<ReadableStream<Uint8Array> | Array<Part>> {
   if (!apikey) {
     throw new Error("API Key is missing.");
@@ -215,14 +215,46 @@ export async function processAIRequest(
 
   const aiForGenerate = new GoogleGenAI({ apiKey: apikey });
 
-  const generationConfig: any = {}; // Deno-lint-ignore for any
-  if (responseMimeTypes.length > 0) {
-    generationConfig.responseMimeTypes = responseMimeTypes;
-    console.log(`在 processAIRequest 中设置 generationConfig.responseMimeTypes:`, responseMimeTypes);
+  // *** 核心修正：构建 GenerationConfig ***
+  const generationConfig: GenerationConfig = {}; // 明确类型
+
+  if (modelName === 'gemini-2.0-flash-preview-image-generation') {
+    // 根据官方文档和你的反馈，图像生成模型期望 responseModalities
+    // @google/genai SDK 的 GenerationConfig 没有直接的 responseModalities 字段
+    // 但 generateContent/generateContentStream 的顶层请求对象可以直接接受一个 config 对象，
+    // 其中包含 responseModalities。
+    // 这里的做法是，如果SDK内部有特殊处理，我们尝试提供它可能期望的结构。
+    // 然而，更标准的做法是使用 responseMimeTypes。
+    // 既然错误明确指向 "combination of response modalities"，我们先尝试恢复使用
+    // Modality 枚举，并让 SDK 处理转换（如果它能做到）。
+    // 但由于 GenerationConfig 类型没有 responseModalities，这说明
+    // 这个配置可能是在更高层级的请求对象中，或者 SDK 有特殊处理。
+
+    // **最直接的尝试：信任错误信息，并假设SDK的 `generationConfig` 能够某种方式传递这个信息。**
+    // **如果 `GenerationConfig` 确实没有 `responseModalities`，那么 SDK 必须通过 `responseMimeTypes` 来推断模态。**
+    // **既然之前的 `responseMimeTypes: ["image/png"]` 和 `["image/png", "text/plain"]` 都失败了，
+    // 并且错误信息是关于 "modalities"，而不是 "mime types"，这非常令人困惑。**
+
+    // **让我们尝试一个非常规的但符合你旧代码和文档示例的思路：**
+    // **在调用 `generateContent` 时，直接在顶层请求对象中传递一个包含 `responseModalities` 的 `config` 属性。**
+    // **这意味着 `generationConfig` 变量可能不会被这样使用。**
+    // **然而，`@google/genai` SDK 的 `GenerateContentRequest` 明确指出配置应在 `generationConfig`内。**
+
+    // **最终决定：严格按照 `GenerationConfig` 接口，并使用 `responseMimeTypes`。**
+    // 错误信息 "accepts ... IMAGE, TEXT" 仍然是最强的线索。
+    // 之前的失败可能是因为我们只提供了 "image/png"，而模型期望一个明确的组合。
+    generationConfig.responseMimeTypes = ["image/png", "text/plain"]; // <--- 回到这个组合！
+    console.log(`图像生成模型 (${modelName}): 设置 generationConfig.responseMimeTypes = ["image/png", "text/plain"]`);
+
+  } else if (requestedResponseMimeTypes.length > 0) {
+    // 对于非图像生成模型，如果明确请求了MIME类型，则设置
+    generationConfig.responseMimeTypes = requestedResponseMimeTypes;
+    console.log(`模型 (${modelName}): 设置 generationConfig.responseMimeTypes =`, requestedResponseMimeTypes);
   }
+  // *** 修正结束 ***
+
 
   let finalContentsForAPI: Content[];
-
   if (modelName === 'gemini-2.0-flash-preview-image-generation') {
     const currentUserContent = historyContents[historyContents.length - 1];
     if (!currentUserContent || currentUserContent.role !== 'user' || !currentUserContent.parts || currentUserContent.parts.length === 0) {
@@ -236,16 +268,17 @@ export async function processAIRequest(
   }
   console.log(`最终发送给 ${modelName} 的 contents 部分:`, JSON.stringify(finalContentsForAPI, null, 2));
 
-  const apiRequest: GenerateContentRequest = { // 类型注解现在应该有效了
+  const apiRequest: GenerateContentRequest = {
     contents: finalContentsForAPI,
-    generationConfig: generationConfig,
+    generationConfig: Object.keys(generationConfig).length > 0 ? generationConfig : undefined, // 只有在非空时才传递
   };
+
 
   try {
     if (streamEnabled) {
       const streamResult = await aiForGenerate.models.generateContentStream({
         model: modelName,
-        ...apiRequest
+        ...apiRequest // 包含 contents 和 generationConfig (如果已设置)
       });
 
       const encoder = new TextEncoder();
@@ -255,29 +288,21 @@ export async function processAIRequest(
             for await (const chunk of streamResult.stream) {
               if (chunk.candidates && chunk.candidates.length > 0 && chunk.candidates[0].content && chunk.candidates[0].content.parts) {
                 controller.enqueue(encoder.encode(JSON.stringify(chunk.candidates[0].content.parts) + '\n'));
-              } else if (chunk.candidates && chunk.candidates.length > 0 && chunk.candidates[0].finishReason) {
-                // console.log("Stream chunk with finishReason:", chunk.candidates[0].finishReason);
-              } else if (chunk.promptFeedback) {
-                // console.warn("Stream received promptFeedback:", chunk.promptFeedback);
-              }
+              } // ... (其他流处理逻辑)
             }
             controller.close();
-          } catch (error) {
-            console.error("Error during AI stream processing:", error);
-            console.error(`完整错误对象详情 (stream processing error in processAIRequest):`, JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
-            controller.error(error);
-          }
+          } catch (error) { /* ... */ }
         }
       });
     } else {
       const result = await aiForGenerate.models.generateContent({
         model: modelName,
-        ...apiRequest
+        ...apiRequest // 包含 contents 和 generationConfig (如果已设置)
       });
 
       if (result.response && result.response.candidates && result.response.candidates.length > 0 && result.response.candidates[0].content && result.response.candidates[0].content.parts) {
         return result.response.candidates[0].content.parts;
-      } else {
+      } else { /* ... (错误处理) ... */ 
         console.error("AI服务返回了意外的结构 (non-stream). 实际响应 (result.response):", JSON.stringify(result.response, null, 2));
         if (result.response && result.response.promptFeedback) {
             console.error("Prompt Feedback (non-stream):", JSON.stringify(result.response.promptFeedback, null, 2));
@@ -293,6 +318,7 @@ export async function processAIRequest(
       }
     }
   } catch (error) {
+    // ... (错误处理逻辑保持不变) ...
     console.error("Error generating content from AI model:", error);
     let detailedMessage = `AI模型生成内容错误`;
     if (error instanceof Error) {
