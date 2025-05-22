@@ -2,16 +2,20 @@
 
 import {
   GoogleGenAI,
-  Modality, // 保留 Modality 以便未来可能使用或参考
+  Modality,
   Part,
   FileMetadata,
   FileState,
   Content,
-  GenerateContentRequest // 导入这个类型
+  GenerateContentResult,       // 已有
+  GenerateContentStreamResult, // 已有
+  GenerateContentRequest       // *** 添加这个导入 ***
 } from "npm:@google/genai";
 import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 
-// pollFileState 和 fetchImageFromUrl 函数保持不变 (来自上一个回复)
+// ... (pollFileState, fetchImageFromUrl, parseFormDataToContents, processAIRequest 函数的其余部分保持不变) ...
+
+// pollFileState 辅助函数保持不变 (来自上一个回复)
 async function pollFileState(
   ai: GoogleGenAI,
   fileNameInApi: string,
@@ -65,7 +69,6 @@ async function fetchImageFromUrl(imageUrl: string): Promise<{ data: Uint8Array; 
     return null;
   }
 }
-
 
 export async function parseFormDataToContents(formData: FormData, inputText: string, apikey: string): Promise<Array<Part>> {
   const partsAccumulator: Array<Part> = [];
@@ -196,9 +199,6 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
 }
 
 
-// src/services/ai.service.ts
-// ... (pollFileState, fetchImageFromUrl, parseFormDataToContents 保持不变) ...
-
 export async function processAIRequest(
   modelName: string,
   apikey: string,
@@ -230,29 +230,22 @@ export async function processAIRequest(
     }
     const aktuellenParts = currentUserContent.parts;
     console.log(`图像生成模型 (${modelName}) 使用的 parts:`, JSON.stringify(aktuellenParts));
-    // 对于图像生成，API 通常期望 'contents' 是一个只包含当前用户输入的 Content 数组
     finalContentsForAPI = [{ role: 'user', parts: aktuellenParts }];
-    // 如果需要包含上下文历史 для图像生成：
-    // finalContentsForAPI = historyContents;
   } else {
     finalContentsForAPI = historyContents;
   }
   console.log(`最终发送给 ${modelName} 的 contents 部分:`, JSON.stringify(finalContentsForAPI, null, 2));
 
-  // 构建完整的请求对象
-  constapiRequest: GenerateContentRequest = {
+  const apiRequest: GenerateContentRequest = { // 类型注解现在应该有效了
     contents: finalContentsForAPI,
     generationConfig: generationConfig,
-    // model: modelName, // model 通常在方法调用时指定，而不是在请求对象内部
   };
-
 
   try {
     if (streamEnabled) {
-      // *** 关键修正：直接调用 aiForGenerate.models.generateContentStream ***
       const streamResult = await aiForGenerate.models.generateContentStream({
-        model: modelName, // 将 model 名称作为顶层参数传递
-        ...apiRequest // 展开其他请求参数
+        model: modelName,
+        ...apiRequest
       });
 
       const encoder = new TextEncoder();
@@ -276,14 +269,12 @@ export async function processAIRequest(
           }
         }
       });
-    } else { // 非流式
-      // *** 关键修正：直接调用 aiForGenerate.models.generateContent ***
+    } else {
       const result = await aiForGenerate.models.generateContent({
-        model: modelName, // 将 model 名称作为顶层参数传递
-        ...apiRequest // 展开其他请求参数
+        model: modelName,
+        ...apiRequest
       });
 
-      // 非流式响应现在是 GenerateContentResult，其响应在 .response 属性下
       if (result.response && result.response.candidates && result.response.candidates.length > 0 && result.response.candidates[0].content && result.response.candidates[0].content.parts) {
         return result.response.candidates[0].content.parts;
       } else {
@@ -302,7 +293,6 @@ export async function processAIRequest(
       }
     }
   } catch (error) {
-    // ... (错误处理逻辑保持不变) ...
     console.error("Error generating content from AI model:", error);
     let detailedMessage = `AI模型生成内容错误`;
     if (error instanceof Error) {
