@@ -26,7 +26,6 @@
     white-space: pre-wrap; /* 保留空白和换行 */
     box-shadow: 0 1px 0.5px rgba(0, 0, 0, 0.13); /* 添加细微阴影 */
     overflow-wrap: break-word; /* 确保长单词在不使用 word-wrap 时也能换行 */
-    /* 解决旧样式中 padding: 0px 导致文本和图片直接贴边的问题 */
 }
 
 /* 用户消息样式 (右对齐，绿色背景) */
@@ -55,7 +54,7 @@
     margin-top: 5px;
     clear: both; /* 清除浮动 */
     max-width: 70%; /* 确保与消息宽度一致 */
-    align-self: flex-end; /* <--- 关键修改：用户文件的预览也靠右对齐 */
+    align-self: flex-end; /* 用户文件的预览也靠右对齐 */
 }
 
 .message-preview-item {
@@ -102,7 +101,7 @@
     display: block; /* 确保图片独占一行 */
 }
 
-/* 加载动画 (从 loading-animation.css 整合过来) */
+/* 加载动画 */
 .loading-animation {
     display: flex;
     justify-content: center;
@@ -259,4 +258,35 @@ body.dark-mode {
     --ai-message-color: #3a3a3a; /* AI 消息更深的灰色 */
     --ai-message-text-color: #f0f0f0;
     --dot-color: #bbb;
+}
+
+/* 新增：用于显示历史记录中非图片文件的样式 */
+.message-displayed-file {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background-color: #f0f0f0; /* 浅灰色背景 */
+    border-radius: 8px;
+    margin-top: 5px;
+    max-width: 100%;
+    word-break: break-all; /* 确保长文件名换行 */
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.message-displayed-file .file-icon {
+    flex-shrink: 0; /* 防止SVG被压缩 */
+    color: #6c757d; /* 图标颜色 */
+}
+
+.message-displayed-file a {
+    color: #007bff; /* 链接颜色 */
+    text-decoration: none;
+    font-size: 0.9em;
+    font-weight: bold;
+    word-break: break-all; /* 确保链接文本换行 */
+}
+
+.message-displayed-file a:hover {
+    text-decoration: underline;
 }
