@@ -5,7 +5,7 @@ const databaseUrl = "postgresql://neondb_owner:npg_zMNKkv16wYiT@ep-polished-broo
 export const client = new Client(databaseUrl);
 
 // Function to ensure necessary tables exist
-async function ensureTablesExist() {
+export async function ensureTablesExist() {
   try {
     await client.queryObject(`
       CREATE TABLE IF NOT EXISTS chats (
