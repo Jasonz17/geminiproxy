@@ -2,18 +2,17 @@
 
 import {
   GoogleGenAI,
-  Modality,
+  Modality, // 确保 Modality 被导入
   Part,
   FileMetadata,
   FileState,
   Content,
   GenerateContentRequest,
-  GenerationConfig // 不需要 Modality 了，因为我们不直接用它来配置
+  // GenerationConfig // 不再直接使用 GenerationConfig 来设置 responseModalities
 } from "npm:@google/genai";
 import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 
-// pollFileState 和 fetchImageFromUrl 函数保持不变
-
+// pollFileState 和 fetchImageFromUrl 函数保持不变 (来自上一个回复)
 async function pollFileState(
   ai: GoogleGenAI,
   fileNameInApi: string,
@@ -196,34 +195,24 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
   return partsAccumulator;
 }
 
-// src/services/ai.service.ts
-// ... (顶部导入和辅助函数不变) ...
-
 export async function processAIRequest(
   modelName: string,
   apikey: string,
   historyContents: Content[],
   streamEnabled: boolean,
-  requestedResponseMimeTypes: string[] = [] // 这个参数可能对于图像生成不再直接使用
+  // 这个参数现在不再直接用于图像生成模型的 responseMimeTypes
+  // 而是作为一个通用的、可由其他模型使用的配置
+  _requestedResponseMimeTypes: string[] = [] // 加下划线表示它可能不被图像生成直接使用
 ): Promise<ReadableStream<Uint8Array> | Array<Part>> {
-  // ... (apikey 和 historyContents 检查不变) ...
-
-  const aiForGenerate = new GoogleGenAI({ apiKey: apikey });
-  const generationConfig: GenerationConfig = {};
-
-  if (modelName === 'gemini-2.0-flash-preview-image-generation') {
-    // *** 关键尝试：使用 responseMimeType (单数) ***
-    generationConfig.responseMimeType = "image/png"; // 或者 "image/jpeg"
-    console.log(`图像生成模型 (${modelName}): 设置 generationConfig.responseMimeType = "image/png"`);
-    // 当只请求一种主要的非文本MIME类型时，模型通常也会返回相关的文本。
-    // 我们不再设置 responseMimeTypes 数组，避免组合问题。
-  } else if (requestedResponseMimeTypes.length > 0) {
-    // 对于其他模型，如果需要多种响应类型，才使用 responseMimeTypes (复数)
-    generationConfig.responseMimeTypes = requestedResponseMimeTypes;
-    console.log(`模型 (${modelName}): 设置 generationConfig.responseMimeTypes =`, requestedResponseMimeTypes);
+  if (!apikey) {
+    throw new Error("API Key is missing.");
+  }
+  if (!historyContents || historyContents.length === 0) {
+     throw new Error("No history/content provided to AI model for processing (processAIRequest).");
   }
 
-  // ... (finalContentsForAPI 和 apiRequest 构建逻辑不变) ...
+  const aiForGenerate = new GoogleGenAI({ apiKey: apikey });
+
   let finalContentsForAPI: Content[];
   if (modelName === 'gemini-2.0-flash-preview-image-generation') {
     const currentUserContent = historyContents[historyContents.length - 1];
@@ -238,24 +227,41 @@ export async function processAIRequest(
   }
   console.log(`最终发送给 ${modelName} 的 contents 部分:`, JSON.stringify(finalContentsForAPI, null, 2));
 
-  const apiRequest: GenerateContentRequest = {
+  // *** 核心修正：构建请求对象，严格按照文档示例和您的反馈 ***
+  // deno-lint-ignore no-explicit-any
+  const requestOptions: any = {
     contents: finalContentsForAPI,
-    ...(Object.keys(generationConfig).length > 0 && { generationConfig: generationConfig }),
   };
-  console.log(`构建的 apiRequest (传递给 generateContent/Stream):`, JSON.stringify(apiRequest, null, 2));
+
+  if (modelName === 'gemini-2.0-flash-preview-image-generation') {
+    // 直接在请求对象的顶层（如果SDK允许）或 config 属性中设置 responseModalities
+    // 根据官方文档，它应该在 config 内
+    requestOptions.config = {
+      responseModalities: [Modality.TEXT, Modality.IMAGE],
+    };
+    console.log(`为图像生成模型 (${modelName}) 设置 config:`, JSON.stringify(requestOptions.config));
+  } else {
+    // 对于其他模型，如果需要设置 responseMimeTypes，则通过 generationConfig
+    if (_requestedResponseMimeTypes.length > 0) {
+      requestOptions.generationConfig = {
+        responseMimeTypes: _requestedResponseMimeTypes,
+      };
+      console.log(`模型 (${modelName}): 设置 generationConfig.responseMimeTypes =`, _requestedResponseMimeTypes);
+    }
+  }
+  // *** 修正结束 ***
+  console.log(`构建的 requestOptions (传递给 generateContent/Stream):`, JSON.stringify(requestOptions, null, 2));
 
 
   try {
     if (streamEnabled) {
-      // 对于图像生成，流式响应可能不常见或不支持，但我们保持逻辑一致性
-      // 如果图像生成不支持流式，API 可能会报错，或者流中直接包含完整的图像数据
-      const streamResult = await aiForGenerate.models.generateContentStream({
-        model: modelName,
-        ...apiRequest
-      });
-      // ... (流处理逻辑不变)
+      // @google/genai 的 generateContentStream 接受 (modelName, request) 或 (requestWithName)
+      // 我们使用后者，将 modelName 放入请求对象中
+      const streamRequest = { model: modelName, ...requestOptions };
+      const streamResult = await aiForGenerate.models.generateContentStream(streamRequest);
+
       const encoder = new TextEncoder();
-      return new ReadableStream({ 
+      return new ReadableStream({ /* ... (流处理逻辑不变) ... */ 
         async start(controller) {
           try {
             for await (const chunk of streamResult.stream) {
@@ -271,20 +277,12 @@ export async function processAIRequest(
           }
         }
       });
-
     } else { // 非流式
-      const result = await aiForGenerate.models.generateContent({
-        model: modelName,
-        ...apiRequest
-      });
+      const nonStreamRequest = { model: modelName, ...requestOptions };
+      const result = await aiForGenerate.models.generateContent(nonStreamRequest);
 
       if (result.response && result.response.candidates && result.response.candidates.length > 0 && result.response.candidates[0].content && result.response.candidates[0].content.parts) {
-        // 检查返回的 parts 是否包含图像和文本
-        const parts = result.response.candidates[0].content.parts;
-        const hasImage = parts.some(part => part.inlineData && part.inlineData.mimeType.startsWith('image/'));
-        const hasText = parts.some(part => part.text);
-        console.log(`图像生成响应: 包含图片? ${hasImage}, 包含文本? ${hasText}`);
-        return parts;
+        return result.response.candidates[0].content.parts;
       } else { /* ... (错误处理逻辑不变) ... */ 
         console.error("AI服务返回了意外的结构 (non-stream). 实际响应 (result.response):", JSON.stringify(result.response, null, 2));
         if (result.response && result.response.promptFeedback) {
@@ -300,7 +298,8 @@ export async function processAIRequest(
         throw new Error("AI服务返回了意外的结构 (non-stream)");
       }
     }
-  } catch (error) { /* ... (错误处理逻辑不变) ... */ 
+  } catch (error) {
+    // ... (错误处理逻辑保持不变) ...
     console.error("Error generating content from AI model:", error);
     let detailedMessage = `AI模型生成内容错误`;
     if (error instanceof Error) {
