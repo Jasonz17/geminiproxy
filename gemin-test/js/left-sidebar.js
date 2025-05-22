@@ -45,45 +45,55 @@ function formatNumberWithCommas(number) {
 
 // Function to update model information display
 function updateModelInfo(selectedModel) {
-    const info = modelInfo[selectedModel]; // Added semicolon here
-        const maxInputTokenElement = document.getElementById('max-input-token');
-        if (maxInputTokenElement) {
-            maxInputTokenElement.textContent = formatNumberWithCommas(info.maxInputToken);
-        }
-        const maxOutputTokenElement = document.getElementById('max-output-token');
-        if (maxOutputTokenElement) {
-            maxOutputTokenElement.textContent = formatNumberWithCommas(info.maxOutputToken);
-        }
-        const rpdElement = document.getElementById('rpd');
-        if (rpdElement) {
-            rpdElement.textContent = info.rpd;
-        }
-        const rpmElement = document.getElementById('rpm');
-        if (rpmElement) {
-            rpmElement.textContent = info.rpm;
-        }
-        const inputTypesElement = document.getElementById('input-types');
-        if (inputTypesElement) {
-            inputTypesElement.textContent = info.inputTypes;
-        }
-        const outputTypesElement = document.getElementById('output-types');
-        if (outputTypesElement) {
-            outputTypesElement.textContent = info.outputTypes;
-        }
+    const info = modelInfo[selectedModel];
+    // 确保 info 对象存在
+    if (!info) {
+        console.warn(`Model info not found for model: ${selectedModel}`);
+        // 可以设置默认值或清空显示
+        document.getElementById('max-input-token').textContent = 'N/A';
+        document.getElementById('max-output-token').textContent = 'N/A';
+        document.getElementById('rpd').textContent = 'N/A';
+        document.getElementById('rpm').textContent = 'N/A';
+        document.getElementById('input-types').textContent = 'N/A';
+        document.getElementById('output-types').textContent = 'N/A';
+        return;
     }
+
+    const maxInputTokenElement = document.getElementById('max-input-token');
+    if (maxInputTokenElement) {
+        maxInputTokenElement.textContent = formatNumberWithCommas(info.maxInputToken);
+    }
+    const maxOutputTokenElement = document.getElementById('max-output-token');
+    if (maxOutputTokenElement) {
+        maxOutputTokenElement.textContent = formatNumberWithCommas(info.maxOutputToken);
+    }
+    const rpdElement = document.getElementById('rpd');
+    if (rpdElement) {
+        rpdElement.textContent = info.rpd;
+    }
+    const rpmElement = document.getElementById('rpm');
+    if (rpmElement) {
+        rpmElement.textContent = info.rpm;
+    }
+    const inputTypesElement = document.getElementById('input-types');
+    if (inputTypesElement) {
+        inputTypesElement.textContent = info.inputTypes;
+    }
+    const outputTypesElement = document.getElementById('output-types');
+    if (outputTypesElement) {
+        outputTypesElement.textContent = info.outputTypes;
+    }
+}
+
 export function initializeLeftSidebar() {
-    // Event listener for model selection change (assuming a select element with id 'model-select')
     const modelSelect = document.getElementById('model-select');
     if (modelSelect) {
         modelSelect.addEventListener('change', (event) => {
             updateModelInfo(event.target.value);
         });
-        // Update info on initial load with the default selected model
+        // 确保在页面加载时调用一次，显示初始模型信息
         updateModelInfo(modelSelect.value);
+    } else {
+        console.error("Model select element not found, skipping left sidebar initialization.");
     }
-
-    // The temperature slider was removed, so no synchronization is needed.
-    // The number input handles min, max, and step constraints via HTML attributes.
-
-
 }
