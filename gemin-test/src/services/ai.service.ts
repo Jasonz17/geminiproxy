@@ -181,5 +181,8 @@ export async function handleProcessRequest(req: Request): Promise<Response> {
         }
 
     }
+  } catch (error) {
+    console.error("Error handling process request:", error);
+    return new Response("Error processing request", { status: 500 });
   }
 }
