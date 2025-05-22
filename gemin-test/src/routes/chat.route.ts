@@ -4,7 +4,7 @@ import { ChatService } from "../services/chat.service.ts";
 import { processAIRequest, parseFormDataToContents } from "../services/ai.service.ts";
 import { Client } from "jsr:@db/postgres";
 import { Message } from "../database/models/message.ts";
-import { Content, Part } from "npm:@google/genai"; // 移除了 Modality
+import { Content, Part } from "npm:@google/genai"; // Modality 不再需要从这里导入
 
 let dbClient: Client | null = null;
 const decoder = new TextDecoder();
@@ -25,7 +25,7 @@ export async function handleChatRequest(req: Request): Promise<Response> {
     try {
       const formData = await req.formData();
       const chatIdParam = formData.get('chatId');
-      const model = formData.get('model')?.toString();
+      const model = formData.get('model')?.toString(); // model 是 modelName
       const apikey = formData.get('apikey')?.toString();
       const messageText = formData.get('input')?.toString() || '';
       const streamEnabled = formData.get('stream') === 'true';
@@ -59,33 +59,41 @@ export async function handleChatRequest(req: Request): Promise<Response> {
       console.log(`用户消息已保存到数据库 (Chat ID: ${currentChatId}):`, userContentParts);
 
       const historyMessages: Message[] = await chatService.getChatHistory(currentChatId);
-      const fullAiContents: Content[] = [];
+      const fullAiContents: Content[] = []; // 这是 historyContents
       for (const msg of historyMessages) {
           const role = (msg.role === 'user' || msg.role === 'model') ? msg.role : 'user';
           const parts: Part[] = msg.content as Part[];
           fullAiContents.push({ role: role, parts: parts });
       }
 
-      let responseMimeTypesForConfig: string[] = []; 
+      // *** 核心修正：这里决定传递给 processAIRequest 的 responseMimeTypes ***
+      let mimeTypesForRequest: string[] = []; 
       if (model === 'gemini-2.0-flash-preview-image-generation') {
-        responseMimeTypesForConfig = ["image/png"]; 
-        console.log(`为图像生成模型 ${model} 设置 responseMimeTypes:`, responseMimeTypesForConfig);
+        // 根据错误信息，模型接受 TEXT, IMAGE 模态。
+        // 我们将此转换为具体的MIME类型。
+        mimeTypesForRequest = ["text/plain", "image/png"]; // 确保顺序与错误信息中的 TEXT, IMAGE 一致
+        console.log(`为图像生成模型 ${model} 设置 mimeTypesForRequest:`, mimeTypesForRequest);
       } else {
+        // 对于其他模型，通常不需要显式设置，它们默认返回文本。
+        // 如果有其他模型也需要特定响应类型，可以在这里添加逻辑。
         console.log(`模型 ${model} 使用默认响应类型 (通常是文本)`);
       }
+      // *** 修正结束 ***
+
 
       if (!apikey) {
         return new Response("API Key is missing for AI service call.", { status: 400 });
       }
       
       const aiResponse = await processAIRequest(
-        model, // 第一个参数是 modelName
+        model,                      // modelName
         apikey,
-        fullAiContents, // 第二个参数是 historyContents (Content[])
-        streamEnabled,  // 第三个参数是 streamEnabled
-        responseMimeTypesForConfig // 第四个参数是 responseMimeTypes (string[])
+        fullAiContents,             // historyContents (Content[])
+        streamEnabled,
+        mimeTypesForRequest         // requestedResponseMimeTypes (string[])
       );
       
+      // ... (后续的流式和非流式响应处理逻辑保持不变) ...
       if (streamEnabled) {
         const aiMessagePartsAccumulator: Part[] = [];
         const encoder = new TextEncoder();
