@@ -16,8 +16,6 @@
     min-width: 0; /* 确保flex item可以正确缩小 */
     overflow: hidden; /* 防止内容溢出 */
     /* 移除 height: 100%; 和 width: 100%; - 这导致了布局问题 */
-    /* height: 100%; */
-    /* width: 100%; */
 }
 
 /* 中间区域的基础布局 */
