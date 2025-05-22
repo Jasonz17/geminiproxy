@@ -1,0 +1,96 @@
+#left-sidebar {
+    width: 250px;
+    background-color: #f0f0f0; /* 改为灰色，与网页整体背景色互换 */
+    padding: 10px;
+    box-shadow: none; /* No shadow */
+
+    margin-left: 15px; /* 增加与左边的缝隙 */
+    margin-bottom: 15px; /* 增加底部15px间隙 */
+    display: flex;    flex-direction: column;
+    border-radius: 15px; /* 增大圆角 */
+    position: relative;
+    box-sizing: border-box;
+}
+
+
+.sidebar-header-buttons {
+    display: flex;
+    justify-content: flex-end; /* Align items to the right */
+    align-items: center;
+    width: 100%;
+    margin-bottom: 10px; /* 减小与模型选择框的间距 */
+}
+
+#new-chat-top-button {
+    padding: 5px 10px;
+    border: 1px solid #007bff; /* 添加蓝色边框 */
+    border-radius: 15px;
+    cursor: pointer;
+    background-color: #e9e9eb;
+    color: #333;
+    font-size: 0.9em;
+    height: 30px;
+    line-height: 20px; /* Adjusted line-height to better center text */
+}
+
+#left-sidebar {
+    width: 240px; /* 侧边栏宽度 */
+    background-color: #f5f5f5; /* 浅灰色背景 */
+    padding: 15px; /* 内边距 */
+    border-right: 1px solid #ddd; /* 右侧边框 */
+}
+.left-settings {
+    /* Add styles for the left sidebar here */
+
+/* Model selection box beautification */
+#model-select {
+    padding: 8px;
+    border-radius: 8px; /* 增加圆角 */
+    border: 1px solid #ccc;
+    margin-bottom: 5px; /* 进一步减少与模型信息的间距 */
+    width: 100%;
+    box-sizing: border-box;
+    height: 40px; /* 增加选择框高度 */
+    font-size: 14px; /* 减小内部字体（原16px-1号） */
+}
+
+/* Font size reduction for model info labels */
+.left-settings .setting-group label {
+    font-size: 9px !important;
+}
+
+
+}
+
+.setting-group {
+    margin-bottom: 15px;
+}
+
+.setting-group label {
+    display: block;
+    margin-bottom: 8px; /* Increased margin */
+    font-weight: bold;
+    font-size: 14px; /* 减小字体（原16px-1号） */
+}
+
+#model-select {
+    width: 100%; /* Adjust width to fit container */
+    box-sizing: border-box; /* Include padding and border in the element's total width */
+}
+
+#model-info p {
+    margin: 5px 0;
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+}
+
+#model-info {
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+}
+
+#model-info .value {
+    text-align: right;
+}

@@ -1,0 +1,70 @@
+/* middle-area-up.css */
+/* 上部聊天显示区域样式 */
+
+#chat-display {
+    flex-grow: 1;
+    flex-shrink: 1;
+    flex-basis: 0;
+    overflow-y: auto;
+    margin-bottom: 10px;
+    background-color: #ffffff;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* 消息气泡样式 */
+.message {
+    padding: 0px;
+    margin: 0;
+    border-radius: 8px;
+    max-width: 80%;
+    font-size: 14px;
+}
+
+.message.user {
+    background-color: #e3f2fd;
+    align-self: flex-end;
+}
+
+.message.ai {
+    background-color: #f5f5f5;
+    align-self: flex-start;
+}
+
+/* 聊天气泡外下方的文件预览容器样式 */
+.message-file-preview-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 5px;
+    padding: 0;
+    border-top: none;
+    clear: both;
+    width: 100%;
+}
+
+.message-preview-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+}
+
+.message-preview-item img {
+    max-width: 80px;
+    max-height: 80px;
+    object-fit: contain;
+    border-radius: 4px;
+}
+
+.message-file-name {
+    font-size: 12px;
+    color: #555;
+    text-align: center;
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

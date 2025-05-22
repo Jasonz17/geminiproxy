@@ -1,0 +1,61 @@
+#top-area {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    background-color: #ffffff; /* 白色背景 */
+}
+
+.top-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.list-icon {
+    background: none;
+    border: none;
+    padding: 5px;
+    cursor: pointer;
+    color: #666;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.3s ease;
+}
+
+.list-icon:hover {
+    color: #9880ff;
+}
+
+.site-name {
+    font-size: 1.5em;
+    font-weight: bold;
+    padding: 5px 10px; /* 调整内边距 */
+}
+
+.api-key-area {
+    display: flex;
+    align-items: center;
+    padding: 5px 10px; /* 调整内边距 */
+}
+
+#api-key-input {
+    margin-right: 10px;
+    padding: 5px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+#save-api-key {
+    padding: 8px 15px;
+    border: none;
+    border-radius: 20px; /* Rounded buttons */
+    cursor: pointer;
+    margin-left: 5px;
+}
+
+#save-api-key {
+    background-color: #007bff; /* Placeholder button color */
+    color: white;
+}

@@ -1,0 +1,33 @@
+/* middle-area.css */
+/* 整体布局相关的样式 */
+
+#middle-area {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    background-color: #ffffff; /* White background */
+    padding: 5px; /* 减少内边距 */
+    border-radius: 15px; /* 增大圆角 */
+    box-sizing: border-box;
+    border: 1px solid #000; /* Add black border */
+    margin-right: 15px; /* 保留右边间隙 */
+    margin-bottom: 15px; /* 增加底部15px间隙 */
+    transition: all 0.3s ease;
+    min-width: 0; /* 确保flex item可以正确缩小 */
+    overflow: hidden; /* 防止内容溢出 */
+    height: 100%; /* 确保占满容器高度 */
+    width: 100%; /* 确保占满可用宽度 */
+}
+
+/* 中间区域的基础布局 */
+#middle-area-up {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#middle-area-down {
+    display: flex;
+    flex-direction: column;
+}
