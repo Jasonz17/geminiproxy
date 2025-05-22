@@ -34,6 +34,12 @@ export function initializeInputArea(displayMessage) {
     const toolbarLeft = document.querySelector('.toolbar-left');
     let isStreamMode = false; // 初始流式响应状态
 
+    // 确保元素存在才进行操作
+    if (!userInput || !inputContainer || !toolbarLeft) {
+        console.error("Input area elements not found, skipping initialization.");
+        return;
+    }
+
     // 创建文件预览容器
     const filePreviewContainer = document.createElement('div');
     filePreviewContainer.id = 'file-preview-container';
