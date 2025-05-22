@@ -3,6 +3,9 @@
 // 存储选中的文件
 let selectedFiles = [];
 
+// 存储当前聊天ID
+let currentChatId = null;
+
 // 文件类型映射
 const fileTypeMap = {
     'image': '.png,.jpg,.jpeg,.webp,.heic,.heif',
@@ -192,6 +195,9 @@ async function handleSendMessage(userInput, sendButton, filePreviewContainer, di
         formData.append('apikey', apiKey);
         formData.append('input', messageText);
         formData.append('stream', isStreamMode.toString());
+        if (currentChatId) {
+            formData.append('chatId', currentChatId);
+        }
 
         selectedFiles.forEach((file, index) => {
             formData.append(`file${index}`, file);
@@ -233,6 +239,17 @@ async function handleSendMessage(userInput, sendButton, filePreviewContainer, di
                 await handleStreamResponse(response, aiMessageElement, chatDisplay);
             } else {
                 await handleNormalResponse(response, aiMessageElement, chatDisplay);
+            }
+
+            // 提取并存储chatId
+            try {
+                const responseData = await response.clone().json(); // Clone response to read body again
+                if (responseData && responseData.chatId) {
+                    currentChatId = responseData.chatId;
+                    console.log('Received chatId:', currentChatId);
+                }
+            } catch (e) {
+                console.error('Error extracting chatId from response:', e);
             }
 
         } catch (error) {
