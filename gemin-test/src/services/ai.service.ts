@@ -1,7 +1,7 @@
 // src/services/ai.service.ts
 
-// 修正 import 路径和类名
-import { GoogleGenAI, Modality } from "npm:@google/genai"; // 修正：确保是 GoogleGenAI
+// 确保这里是 @google/genai，且类名是 GoogleGenAI
+import { GoogleGenAI, Modality } from "npm:@google/genai";
 import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 
 /**
