@@ -1,9 +1,9 @@
 #left-sidebar {
-    width: 240px; /* 统一宽度，选择 240px */
+    width: 240px; /* 统一宽度 */
     background-color: #f5f5f5; /* 浅灰色背景 */
     padding: 15px; /* 内边距 */
     border-right: 1px solid #ddd; /* 右侧边框 */
-    box-shadow: none; /* No shadow (If you don't want a shadow) */
+    box-shadow: none; /* No shadow */
     margin-left: 15px; /* 增加与左边的缝隙 */
     margin-bottom: 15px; /* 增加底部15px间隙 */
     display: flex;
@@ -11,7 +11,6 @@
     border-radius: 15px; /* 增大圆角 */
     position: relative;
     box-sizing: border-box;
-    /* transition, width, flex-shrink from style.css are handled by style.css */
 }
 
 
@@ -56,6 +55,7 @@
     font-size: 9px !important;
 }
 
+
 .setting-group {
     margin-bottom: 15px;
 }
@@ -66,8 +66,6 @@
     font-weight: bold;
     font-size: 14px; /* 减小字体（原16px-1号） */
 }
-
-/* #model-select (already defined above, removed duplication) */
 
 #model-info p {
     margin: 5px 0;
