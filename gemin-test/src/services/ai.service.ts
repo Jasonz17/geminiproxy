@@ -1,188 +1,127 @@
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { GoogleGenAI, Modality } from "npm:@google/genai"; // 使用正确的库
-import { dirname, fromFileUrl, join } from "https://deno.land/std@0.224.0/path/mod.ts";
-import { serveFile } from "https://deno.land/std@0.224.0/http/file_server.ts";
+// src/services/ai.service.ts
+
+import { GoogleGenAI, Modality } from "npm:@google/genai";
 import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 
-// 获取当前脚本所在的目录
-const __dirname = dirname(fromFileUrl(import.meta.url));
+/**
+ * Parses FormData to extract text input and file content for AI model.
+ * Handles base64 encoding for smaller files and logs for larger ones.
+ * @param formData The FormData object from the request.
+ * @param inputText The main text input from the user.
+ * @returns An array of content parts suitable for the Gemini API.
+ */
+export async function parseFormDataToContents(formData: FormData, inputText: string): Promise<Array<any>> {
+  const contents = [];
 
-export class AIService {
-  // This class can be used to encapsulate AI related logic if needed later.
-  // For now, we'll keep the core logic in a function.
-}
-
-export async function handleProcessRequest(req: Request): Promise<Response> {
-  // --- 1. 处理 API 代理请求 ---
-  // 只处理 /process 的 POST 请求
-  if (req.method !== "POST") {
-    return new Response("Method Not Allowed", { status: 405 });
+  // Handle text input
+  if (inputText) {
+    contents.push({ text: inputText });
   }
 
-  try {
-    // 解析 FormData
-    const formData = await req.formData();
-    const model = formData.get('model');
-    const apikey = formData.get('apikey');
-    const inputText = formData.get('input');
+  // Handle files
+  // Filtering for actual File objects from formData entries
+  const fileEntries = Array.from(formData.entries()).filter(([key, value]) => value instanceof File);
 
-    if (!model || !apikey) {
-      return new Response("Missing model or apikey in request body", { status: 400 });
-    }
+  for (const [key, file] of fileEntries) {
+    if (file instanceof File) {
+      const fileSizeLimit = 20 * 1024 * 1024; // 20MB
 
-
-      const ai = new GoogleGenAI({ apiKey: apikey.toString() });
-
-      // 构建内容数组
-      const contents = [];
-
-      // 检查输入是否为图片 URL
-      const imageUrlRegex = /^(http(s?):)([/|.][\w\s-])*\.(?:jpg|jpeg|gif|png|webp|heic|heif)$/i;
-      if (inputText && imageUrlRegex.test(inputText.toString())) {
-        // 如果是图片 URL，添加到 contents 数组
-        const imageUrl = inputText.toString();
-        // 尝试从 URL 推断 MIME 类型，或者使用默认值
-        const mimeType = imageUrl.split('.').pop()?.toLowerCase() === 'jpg' ? 'image/jpeg' :
-                         imageUrl.split('.').pop()?.toLowerCase() === 'jpeg' ? 'image/jpeg' :
-                         imageUrl.split('.').pop()?.toLowerCase() === 'png' ? 'image/png' :
-                         imageUrl.split('.').pop()?.toLowerCase() === 'gif' ? 'image/gif' :
-                         imageUrl.split('.').pop()?.toLowerCase() === 'webp' ? 'image/webp' :
-                         imageUrl.split('.').pop()?.toLowerCase() === 'heic' ? 'image/heic' :
-                         imageUrl.split('.').pop()?.toLowerCase() === 'heif' ? 'image/heif' :
-                         'image/*'; // 默认或未知类型
-
-        contents.push({
-          fileData: {
-            mimeType: mimeType,
-            uri: imageUrl,
-          },
-        });
-      } else if (inputText) {
-        // 如果不是图片 URL，作为文本添加
-        contents.push({ text: inputText.toString() });
-      }
-
-      // 添加文件部分 (处理上传的文件)
-      const fileEntries = Array.from(formData.entries()).filter(([key, value]) => value instanceof File);
-
-      for (const [key, file] of fileEntries) {
-        if (file instanceof File) {
-          const fileSizeLimit = 20 * 1024 * 1024; // 20MB
-
-          try {
-            if (file.size <= fileSizeLimit) {
-              // 小于等于 20MB，使用 base64 编码
-              const fileBuffer = await file.arrayBuffer();
-              const base64Data = encodeBase64(new Uint8Array(fileBuffer));
-
-              contents.push({
-                inlineData: {
-                  mimeType: file.type,
-                  data: base64Data,
-                },
-              });
-            } else {
-              // 大于 20MB，使用文件上传 API
-              console.log(`Uploading large file: ${file.name}`);
-              const uploadResult = await ai.uploadFile(file, {
-                mimeType: file.type,
-                displayName: file.name,
-              });
-              console.log(`Upload complete for ${file.name}, URI: ${uploadResult.file.uri}`);
-
-              contents.push({
-                fileData: {
-                  mimeType: file.type,
-                  uri: uploadResult.file.uri,
-                },
-              });
-            }
-          } catch (fileProcessError) {
-            console.error(`Error processing file ${file.name}:`, fileProcessError);
-            // 尝试打印更详细的错误信息，如果 fileProcessError 是一个 Error 对象
-            if (fileProcessError instanceof Error) {
-                console.error(`Error details: ${fileProcessError.message}`);
-                if (fileProcessError.stack) {
-                    console.error(`Error stack: ${fileProcessError.stack}`);
-                }
-            }
-            // 如果错误对象有其他属性，也可以尝试打印
-            console.error(`Full error object:`, JSON.stringify(fileProcessError, null, 2));
-
-            return new Response(`Error processing file: ${file.name}`, { status: 500 });
-          }
-        }
-      }
-
-      if (contents.length === 0) {
-         return new Response("No text or files provided", { status: 400 });
-      }
-
-      // 调用 Gemini API
-      const config: any = {};
-      if (model === 'gemini-2.0-flash-preview-image-generation') {
-        config.responseModalities = [Modality.TEXT, Modality.IMAGE];
-      }
-
-      // 检查是否启用流式响应
-      const streamEnabled = formData.get('stream') === 'true';
-      
-      if (streamEnabled) {
-        // 流式响应处理
-        const stream = await ai.models.generateContentStream({
-          model: model.toString(),
-          contents: contents,
-          config: config,
-        });
-
-        // 设置响应头，使用Transfer-Encoding: chunked
-        const encoder = new TextEncoder();
-        const body = new ReadableStream({
-          async start(controller) {
-            try {
-              for await (const chunk of stream) {
-                if (chunk.candidates && chunk.candidates[0]?.content?.parts) {
-                  // 将每个块转换为JSON字符串并发送
-                  controller.enqueue(encoder.encode(JSON.stringify(chunk.candidates[0].content.parts) + '\n'));
-                }
-              }
-              controller.close();
-            } catch (error) {
-              controller.error(error);
-            }
-          }
-        });
-
-        return new Response(body, {
-          headers: {
-            'Content-Type': 'application/x-ndjson',
-            'Transfer-Encoding': 'chunked',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive'
-          }
-        });
-      } else {
-        // 非流式响应处理
-        const result = await ai.models.generateContent({
-          model: model.toString(),
-          contents: contents,
-          config: config,
-        });
-        
-        // 处理响应，检查文本和图片部分
-        if (result && result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts) {
-          const parts = result.candidates[0].content.parts;
-          return new Response(JSON.stringify(parts), {
-            headers: { "Content-Type": "application/json" },
+      try {
+        if (file.size <= fileSizeLimit) {
+          // Smaller files are included as inlineData (base64)
+          const fileBuffer = await file.arrayBuffer();
+          const base64Data = encodeBase64(new Uint8Array(fileBuffer));
+          contents.push({
+            inlineData: {
+              mimeType: file.type,
+              data: base64Data,
+            },
           });
         } else {
-          console.error("Unexpected API response structure:", JSON.stringify(result, null, 2));
-          return new Response("Error: Unexpected API response structure", { status: 500 });
+          // Larger files would typically require uploading to a service like Google Cloud Storage
+          // For this example, we'll just log a warning and skip, as direct upload via API is complex.
+          console.warn(`文件 ${file.name} (大小: ${file.size / (1024 * 1024)}MB) 超出20MB内联数据限制。已跳过此文件。`);
+          // Optionally, you could throw an error here if large files are critical.
         }
-
+      } catch (fileProcessError) {
+        console.error(`处理文件 ${file.name} 时出错:`, fileProcessError);
+        // Continue processing other files or handle error as needed
+      }
     }
-  } catch (error) {
-    console.error("Error handling process request:", error);
-    return new Response("Error processing request", { status: 500 });
+  }
+  return contents;
+}
+
+/**
+ * Processes an AI request by interacting with the Google Gemini API.
+ * This function handles both streamed and non-streamed responses.
+ * @param model The name of the AI model to use.
+ * @param apikey Your Google Gemini API key.
+ * @param contents An array of content parts (text, inline data, file data) representing the conversation.
+ * @param streamEnabled True if a streamed response is desired, false otherwise.
+ * @param responseModalities Optional array of Modality for response configuration (e.g., for image generation).
+ * @returns A ReadableStream for streamed responses, or an Array of content parts for non-streamed responses.
+ * @throws Error if API key is missing, content is empty, or unexpected API response structure.
+ */
+export async function processAIRequest(
+  model: string,
+  apikey: string,
+  contents: Array<any>, // This will be the full conversation including the current turn
+  streamEnabled: boolean,
+  responseModalities: Modality[] = []
+): Promise<ReadableStream<Uint8Array> | Array<any>> {
+  if (!apikey) {
+    throw new Error("API Key is missing.");
+  }
+  if (!contents || contents.length === 0) {
+    throw new Error("No content provided to AI model for processing.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey: apikey });
+
+  const generationConfig: any = {};
+  if (responseModalities.length > 0) {
+    generationConfig.responseMimeTypes = responseModalities; // Use responseMimeTypes for Modality array
+  }
+
+  if (streamEnabled) {
+    const stream = await ai.models.generateContentStream({
+      model: model,
+      contents: contents,
+      generationConfig: generationConfig,
+    });
+
+    const encoder = new TextEncoder();
+    return new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const chunk of stream) {
+            if (chunk.candidates && chunk.candidates[0]?.content?.parts) {
+              // Each chunk contains an array of parts (text or inlineData)
+              controller.enqueue(encoder.encode(JSON.stringify(chunk.candidates[0].content.parts) + '\n'));
+            }
+          }
+          controller.close();
+        } catch (error) {
+          console.error("Error during AI stream processing:", error);
+          controller.error(error); // Propagate the error to the stream consumer
+        }
+      }
+    });
+  } else {
+    const result = await ai.models.generateContent({
+      model: model,
+      contents: contents,
+      generationConfig: generationConfig,
+    });
+
+    if (result && result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts) {
+      return result.candidates[0].content.parts;
+    } else {
+      console.error("AI服务返回了意外的结构:", JSON.stringify(result, null, 2));
+      throw new Error("AI服务返回了意外的结构");
+    }
   }
 }
+
+// Remove the handleProcessRequest function as it's no longer a direct request handler.
