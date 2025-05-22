@@ -5,6 +5,6 @@ export interface Message {
   chatId: number;
   role: 'user' | 'model';
   // content 现在是一个数组，包含文本和内联数据部分
-  content: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }>;
+  content: Array<{ text?: string; inlineData?: { mimeType: string; data: string }; fileData?: { mimeType: string; uri: string } }>;
   createdAt?: Date;
 }
