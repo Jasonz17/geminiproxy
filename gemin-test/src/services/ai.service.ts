@@ -179,7 +179,7 @@ export async function handleProcessRequest(req: Request): Promise<Response> {
           console.error("Unexpected API response structure:", JSON.stringify(result, null, 2));
           return new Response("Error: Unexpected API response structure", { status: 500 });
         }
-      }
+
 
       // 处理响应，检查文本和图片部分
       if (result && result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts) {
