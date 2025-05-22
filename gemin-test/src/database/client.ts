@@ -1,10 +1,6 @@
 import { Client } from "jsr:@db/postgres";
 
-const databaseUrl = Deno.env.get("DATABASE_URL");
-
-if (!databaseUrl) {
-  throw new Error("DATABASE_URL environment variable not set");
-}
+const databaseUrl = "postgresql://neondb_owner:npg_zMNKkv16wYiT@ep-polished-brook-a16oqjtd-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require";
 
 export const client = new Client(databaseUrl);
 
