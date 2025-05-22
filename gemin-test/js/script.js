@@ -68,7 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             if (isStreamEnabled) {
                 // 流式响应处理
-                const response = await fetch('/process', {
+                const response = await fetch('/chat', { // Change endpoint to /chat
                     method: 'POST',
                     body: formData
                 });
@@ -101,7 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } else {
                 // 非流式响应处理
-                const response = await fetch('/process', {
+                const response = await fetch('/chat', { // Change endpoint to /chat
                     method: 'POST',
                     body: formData
                 });
@@ -110,6 +110,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 const result = await response.json(); // 接收包含chatId和response的对象
                 const parts = result.response; // 获取AI响应内容
+                
+                // Update currentChatId with the chatId from the response
+                if (result.chatId) {
+                    currentChatId = result.chatId;
+                    console.log(`Updated currentChatId to: ${currentChatId}`);
+                }
+
                 let messageContent = '';
                 
                 for (const part of parts) {
