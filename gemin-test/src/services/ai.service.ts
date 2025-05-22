@@ -1,6 +1,6 @@
 // src/services/ai.service.ts
 
-import { GoogleGenAI, Modality, GenerateContentResult, GenerateContentStreamResult, Part } from "npm:@google/genai"; // 确保导入了类型
+import { GoogleGenAI, Modality, GenerateContentResult, GenerateContentStreamResult, Part, Content } from "npm:@google/genai"; // 确保导入了类型
 import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 
 /**
@@ -12,16 +12,12 @@ import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
  * @returns An array of content parts suitable for the Gemini API.
  */
 export async function parseFormDataToContents(formData: FormData, inputText: string, apikey: string): Promise<Array<Part>> {
-  const contents: Array<Part> = []; // 明确 parts 的类型为 Part[]
+  const contents: Array<Part> = [];
 
-  // Handle text input
   if (inputText) {
     contents.push({ text: inputText });
   }
 
-  // Handle files
-  // FormData.entries() 返回的是 [string, FormDataEntryValue][]
-  // 我们只关心 FormDataEntryValue 是 File 实例的情况
   const fileEntries: Array<[string, File]> = [];
   for (const [key, value] of formData.entries()) {
     if (value instanceof File) {
@@ -34,37 +30,31 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
     throw new Error("API Key is required for file uploads.");
   }
 
-  // 此 GoogleGenAI 实例专门用于文件上传
   const aiForFiles = new GoogleGenAI({ apiKey: apikey });
 
-  for (const [_key, file] of fileEntries) { // file 已经是 File 类型
+  for (const [_key, file] of fileEntries) {
     const fileSizeLimitForBase64 = 5 * 1024 * 1024; // 5MB
-
     const isVideoFile = file.type.startsWith('video/');
     const isAudioFile = file.type.startsWith('audio/');
-
     const shouldUseFileAPI = isVideoFile || isAudioFile || file.size > fileSizeLimitForBase64;
 
     try {
       if (shouldUseFileAPI) {
         console.log(`正在通过 File API 上传文件: ${file.name}, 类型: ${file.type}, 大小: ${(file.size / (1024 * 1024)).toFixed(2)}MB`);
-        
         const uploadResult = await aiForFiles.files.upload({
-          file: file, 
+          file: file,
           config: {
             mimeType: file.type,
             displayName: file.name,
           }
         });
-        
         if (!uploadResult.file || !uploadResult.file.uri) {
           console.error("File upload result did not contain expected file URI:", uploadResult);
           throw new Error(`文件上传成功但未返回有效的URI: ${file.name}`);
         }
         console.log(`文件上传完成 ${file.name}, URI: ${uploadResult.file.uri}`);
-
         contents.push({
-          fileData: { // 确保这里的结构符合 Part 类型定义
+          fileData: {
             mimeType: file.type,
             uri: uploadResult.file.uri,
           },
@@ -73,9 +63,8 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
         console.log(`正在进行 Base64 编码: ${file.name}, 类型: ${file.type}, 大小: ${(file.size / (1024 * 1024)).toFixed(2)}MB`);
         const fileBuffer = await file.arrayBuffer();
         const base64Data = encodeBase64(new Uint8Array(fileBuffer));
-
         contents.push({
-          inlineData: { // 确保这里的结构符合 Part 类型定义
+          inlineData: {
             mimeType: file.type,
             data: base64Data,
           },
@@ -120,28 +109,17 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
 /**
  * Processes an AI request by interacting with the Google Gemini API.
  * This function handles both streamed and non-streamed responses.
- * @param model The name of the AI model to use.
- * @param apikey Your Google Gemini API key.
- * @param contents An array of content parts (text, inline data, file data) representing the conversation.
- * @param streamEnabled True if a streamed response is desired, false otherwise.
- * @param responseModalities Optional array of Modality for response configuration (e.g., for image generation).
- * @returns A ReadableStream for streamed responses, or an Array of content parts for non-streamed responses.
- * @throws Error if API key is missing, content is empty, or unexpected API response structure.
  */
 export async function processAIRequest(
   model: string,
   apikey: string,
-  // contents 参数应该是 Content[] 类型，即 { role: string, parts: Part[] }[]
-  // 这里为了兼容 chat.route.ts 中 fullAiContents 的构建，暂时用 any[]
-  // 理想情况下，chat.route.ts 中构建的 fullAiContents 应该直接是 Content[]
-  contents: Array<any>, 
+  contents: Content[], // 明确类型为 Content[]
   streamEnabled: boolean,
   responseModalities: Modality[] = []
-): Promise<ReadableStream<Uint8Array> | Array<Part>> { // 返回类型是 Part[]
+): Promise<ReadableStream<Uint8Array> | Array<Part>> {
   if (!apikey) {
     throw new Error("API Key is missing.");
   }
-  // 检查 contents 是否有效
   if (!contents || contents.length === 0 || contents.every(content => !content.parts || content.parts.length === 0)) {
     throw new Error("No content provided to AI model for processing.");
   }
@@ -158,7 +136,7 @@ export async function processAIRequest(
     if (streamEnabled) {
       const streamResult: GenerateContentStreamResult = await aiForGenerate.models.generateContentStream({
         model: model,
-        contents: contents, //  contents 应该是 Content[] 类型
+        contents: contents,
         generationConfig: generationConfig,
       });
 
@@ -173,8 +151,6 @@ export async function processAIRequest(
                 // console.log("Stream chunk with finishReason:", chunk.candidates[0].finishReason);
               } else if (chunk.promptFeedback) {
                 // console.warn("Stream received promptFeedback:", chunk.promptFeedback);
-              } else {
-                // console.log("Stream chunk without parts, candidates or feedback:", chunk);
               }
             }
             controller.close();
@@ -186,19 +162,22 @@ export async function processAIRequest(
         }
       });
     } else { // 非流式
-      const result: GenerateContentResult = await aiForGenerate.models.generateContent({
+      // 注意：这里的 result 类型是 GenerateContentResponse，但为了简单起见，我们直接用 any，然后检查其结构
+      // SDK 更新后，GenerateContentResult 可能直接就是 GenerateContentResponse 的内容
+      // deno-lint-ignore no-explicit-any
+      const result: any = await aiForGenerate.models.generateContent({
         model: model,
-        contents: contents, // contents 应该是 Content[] 类型
+        contents: contents,
         generationConfig: generationConfig,
       });
-          
-      if (result.response && result.response.candidates && result.response.candidates.length > 0 && result.response.candidates[0].content && result.response.candidates[0].content.parts) {
-        return result.response.candidates[0].content.parts; // 返回 Part[]
+      
+      // --- 关键修正点 ---
+      // 直接从 result 访问 candidates，因为日志显示 result.response 是 undefined
+      if (result && result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts) {
+        return result.candidates[0].content.parts; // 返回 Part[]
       } else {
-        console.error("AI服务返回了意外的结构 (non-stream). 实际响应内容:", JSON.stringify(result.response, null, 2));
-        if (!result.response) {
-             console.error("AI服务返回的 result 对象中缺少 response 属性. 完整 result:", JSON.stringify(result, null, 2));
-        }
+        // 如果上面的条件不满足，记录详细的 result 结构
+        console.error("AI服务返回了意外的结构 (non-stream). 实际响应内容 (result):", JSON.stringify(result, null, 2));
         throw new Error("AI服务返回了意外的结构 (non-stream)");
       }
     }
