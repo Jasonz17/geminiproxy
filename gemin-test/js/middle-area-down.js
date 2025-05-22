@@ -225,7 +225,7 @@ async function handleSendMessage(userInput, sendButton, filePreviewContainer, di
             formData.append(`file${index}`, file); // 附加所有选中的文件
         });
 
-        // 清空输入框和文件预览区
+        // 清空输入框和文件预览区 (修正：这里清空，后面不再填充)
         userInput.value = '';
         userInput.style.height = 'auto'; // 重置输入框高度
         filePreviewContainer.innerHTML = '';
@@ -247,14 +247,21 @@ async function handleSendMessage(userInput, sendButton, filePreviewContainer, di
         chatDisplay.scrollTop = chatDisplay.scrollHeight; // 滚动到底部
 
         try {
-            const response = await fetch('/chat', { // *** 将 /process 改为 /chat ***
+            const response = await fetch('/chat', {
                 method: 'POST',
                 signal: currentController.signal,
                 body: formData
             });
 
             if (!response.ok) {
-                const errorText = await response.text();
+                // 尝试解析错误信息，确保 message 足够详细
+                let errorText = await response.text();
+                try {
+                    const errorJson = JSON.parse(errorText);
+                    errorText = errorJson.message || JSON.stringify(errorJson, null, 2);
+                } catch (e) {
+                    // 如果不是JSON，就用原始文本
+                }
                 throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
             }
             
@@ -295,6 +302,9 @@ async function handleSendMessage(userInput, sendButton, filePreviewContainer, di
         } finally {
             currentController = null; // 重置控制器
             sendButton.innerHTML = getSendButtonSvg(); // 恢复发送图标
+            // 确保输入框在发送后确实被清空
+            userInput.value = '';
+            adjustInputHeight(); // 调整高度以匹配清空后的内容
         }
     }
 }
