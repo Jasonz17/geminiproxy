@@ -1,15 +1,17 @@
 #left-sidebar {
-    width: 250px;
-    background-color: #f0f0f0; /* 改为灰色，与网页整体背景色互换 */
-    padding: 10px;
-    box-shadow: none; /* No shadow */
-
+    width: 240px; /* 统一宽度，选择 240px */
+    background-color: #f5f5f5; /* 浅灰色背景 */
+    padding: 15px; /* 内边距 */
+    border-right: 1px solid #ddd; /* 右侧边框 */
+    box-shadow: none; /* No shadow (If you don't want a shadow) */
     margin-left: 15px; /* 增加与左边的缝隙 */
     margin-bottom: 15px; /* 增加底部15px间隙 */
-    display: flex;    flex-direction: column;
+    display: flex;
+    flex-direction: column;
     border-radius: 15px; /* 增大圆角 */
     position: relative;
     box-sizing: border-box;
+    /* transition, width, flex-shrink from style.css are handled by style.css */
 }
 
 
@@ -33,14 +35,9 @@
     line-height: 20px; /* Adjusted line-height to better center text */
 }
 
-#left-sidebar {
-    width: 240px; /* 侧边栏宽度 */
-    background-color: #f5f5f5; /* 浅灰色背景 */
-    padding: 15px; /* 内边距 */
-    border-right: 1px solid #ddd; /* 右侧边框 */
-}
 .left-settings {
     /* Add styles for the left sidebar here */
+}
 
 /* Model selection box beautification */
 #model-select {
@@ -59,9 +56,6 @@
     font-size: 9px !important;
 }
 
-
-}
-
 .setting-group {
     margin-bottom: 15px;
 }
@@ -73,10 +67,7 @@
     font-size: 14px; /* 减小字体（原16px-1号） */
 }
 
-#model-select {
-    width: 100%; /* Adjust width to fit container */
-    box-sizing: border-box; /* Include padding and border in the element's total width */
-}
+/* #model-select (already defined above, removed duplication) */
 
 #model-info p {
     margin: 5px 0;
