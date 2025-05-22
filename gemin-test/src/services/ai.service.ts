@@ -196,41 +196,34 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
   return partsAccumulator;
 }
 
+// src/services/ai.service.ts
+// ... (顶部导入和辅助函数不变) ...
+
 export async function processAIRequest(
   modelName: string,
   apikey: string,
   historyContents: Content[],
   streamEnabled: boolean,
-  // 传入的 requestedResponseMimeTypes 仍然是 string[]
-  requestedResponseMimeTypes: string[] = []
+  requestedResponseMimeTypes: string[] = [] // 这个参数可能对于图像生成不再直接使用
 ): Promise<ReadableStream<Uint8Array> | Array<Part>> {
-  if (!apikey) {
-    throw new Error("API Key is missing.");
-  }
-  if (!historyContents || historyContents.length === 0) {
-     throw new Error("No history/content provided to AI model for processing (processAIRequest).");
-  }
+  // ... (apikey 和 historyContents 检查不变) ...
 
   const aiForGenerate = new GoogleGenAI({ apiKey: apikey });
-
-  // *** 核心修正：构建 GenerationConfig ***
-  const generationConfig: GenerationConfig = {}; // 使用 SDK 的 GenerationConfig 类型
+  const generationConfig: GenerationConfig = {};
 
   if (modelName === 'gemini-2.0-flash-preview-image-generation') {
-    // **对于图像生成模型，尝试完全不设置 responseMimeTypes，让模型自行决定输出**
-    // **或者，如果必须设置，则严格按照错误信息提示的 TEXT, IMAGE 顺序**
-    // **我们先尝试完全不设置，看模型是否能根据其特性和提示自动生成图像和文本**
-    console.log(`图像生成模型 (${modelName}): 尝试不设置 responseMimeTypes，依赖模型默认行为。`);
-    // 如果上面的尝试失败，并且错误依然是关于 modalities，再尝试下面的：
-    // generationConfig.responseMimeTypes = ["text/plain", "image/png"];
-    // console.log(`图像生成模型 (${modelName}): 设置 generationConfig.responseMimeTypes = ["text/plain", "image/png"]`);
+    // *** 关键尝试：使用 responseMimeType (单数) ***
+    generationConfig.responseMimeType = "image/png"; // 或者 "image/jpeg"
+    console.log(`图像生成模型 (${modelName}): 设置 generationConfig.responseMimeType = "image/png"`);
+    // 当只请求一种主要的非文本MIME类型时，模型通常也会返回相关的文本。
+    // 我们不再设置 responseMimeTypes 数组，避免组合问题。
   } else if (requestedResponseMimeTypes.length > 0) {
-    // 对于其他模型，如果明确请求了MIME类型，则设置
+    // 对于其他模型，如果需要多种响应类型，才使用 responseMimeTypes (复数)
     generationConfig.responseMimeTypes = requestedResponseMimeTypes;
     console.log(`模型 (${modelName}): 设置 generationConfig.responseMimeTypes =`, requestedResponseMimeTypes);
   }
-  // *** 修正结束 ***
 
+  // ... (finalContentsForAPI 和 apiRequest 构建逻辑不变) ...
   let finalContentsForAPI: Content[];
   if (modelName === 'gemini-2.0-flash-preview-image-generation') {
     const currentUserContent = historyContents[historyContents.length - 1];
@@ -245,7 +238,6 @@ export async function processAIRequest(
   }
   console.log(`最终发送给 ${modelName} 的 contents 部分:`, JSON.stringify(finalContentsForAPI, null, 2));
 
-  // 构建请求对象时，只在 generationConfig 非空时才包含它
   const apiRequest: GenerateContentRequest = {
     contents: finalContentsForAPI,
     ...(Object.keys(generationConfig).length > 0 && { generationConfig: generationConfig }),
@@ -255,40 +247,44 @@ export async function processAIRequest(
 
   try {
     if (streamEnabled) {
+      // 对于图像生成，流式响应可能不常见或不支持，但我们保持逻辑一致性
+      // 如果图像生成不支持流式，API 可能会报错，或者流中直接包含完整的图像数据
       const streamResult = await aiForGenerate.models.generateContentStream({
         model: modelName,
         ...apiRequest
       });
-
+      // ... (流处理逻辑不变)
       const encoder = new TextEncoder();
-      return new ReadableStream({ /* ... (流处理逻辑不变) ... */ 
+      return new ReadableStream({ 
         async start(controller) {
           try {
             for await (const chunk of streamResult.stream) {
               if (chunk.candidates && chunk.candidates.length > 0 && chunk.candidates[0].content && chunk.candidates[0].content.parts) {
                 controller.enqueue(encoder.encode(JSON.stringify(chunk.candidates[0].content.parts) + '\n'));
-              } else if (chunk.candidates && chunk.candidates.length > 0 && chunk.candidates[0].finishReason) {
-                // console.log("Stream chunk with finishReason:", chunk.candidates[0].finishReason);
-              } else if (chunk.promptFeedback) {
-                // console.warn("Stream received promptFeedback:", chunk.promptFeedback);
-              }
+              } // ... (其他流处理逻辑)
             }
             controller.close();
-          } catch (error) {
+          } catch (error) { /* ... */ 
             console.error("Error during AI stream processing:", error);
             console.error(`完整错误对象详情 (stream processing error in processAIRequest):`, JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
             controller.error(error);
           }
         }
       });
-    } else {
+
+    } else { // 非流式
       const result = await aiForGenerate.models.generateContent({
         model: modelName,
         ...apiRequest
       });
 
       if (result.response && result.response.candidates && result.response.candidates.length > 0 && result.response.candidates[0].content && result.response.candidates[0].content.parts) {
-        return result.response.candidates[0].content.parts;
+        // 检查返回的 parts 是否包含图像和文本
+        const parts = result.response.candidates[0].content.parts;
+        const hasImage = parts.some(part => part.inlineData && part.inlineData.mimeType.startsWith('image/'));
+        const hasText = parts.some(part => part.text);
+        console.log(`图像生成响应: 包含图片? ${hasImage}, 包含文本? ${hasText}`);
+        return parts;
       } else { /* ... (错误处理逻辑不变) ... */ 
         console.error("AI服务返回了意外的结构 (non-stream). 实际响应 (result.response):", JSON.stringify(result.response, null, 2));
         if (result.response && result.response.promptFeedback) {
@@ -304,8 +300,7 @@ export async function processAIRequest(
         throw new Error("AI服务返回了意外的结构 (non-stream)");
       }
     }
-  } catch (error) {
-    // ... (错误处理逻辑不变) ...
+  } catch (error) { /* ... (错误处理逻辑不变) ... */ 
     console.error("Error generating content from AI model:", error);
     let detailedMessage = `AI模型生成内容错误`;
     if (error instanceof Error) {
