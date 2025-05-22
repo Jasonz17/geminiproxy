@@ -1,20 +1,14 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { Client } from "jsr:@db/postgres";
 import { dirname, fromFileUrl, join } from "https://deno.land/std@0.224.0/path/mod.ts";
 import { serveFile } from "https://deno.land/std@0.224.0/http/file_server.ts";
 
 import { handleProcessRequest } from "./services/ai.service.ts";
 import { handleChatRequest, initializeDatabaseClient } from "./routes/chat.route.ts";
 import { AIService } from "./services/ai.service.ts"; // Import AIService class if needed
+import { client as dbClient } from "./database/client.ts"; // Import the client instance
 
 // 获取当前脚本所在的目录
 const __dirname = dirname(fromFileUrl(import.meta.url));
-
-// 数据库连接字符串
-const databaseUrl = "postgresql://neondb_owner:npg_zMNKkv16wYiT@ep-polished-brook-a16oqjtd-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require";
-
-// 初始化数据库客户端
-const dbClient = new Client(databaseUrl);
 
 // 初始化 AI Service (如果需要)
 const aiService = new AIService(); // Create an instance if the class has methods
