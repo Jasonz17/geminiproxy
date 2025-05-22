@@ -18,8 +18,9 @@ export class ChatService {
     return this.chatRepository.createChat();
   }
 
-  async addMessageToChat(chatId: number, role: string, content: string): Promise<number> { // Change return type to void as addMessage doesn't return a number
-    return this.messageRepository.createMessage(chatId, role, content); // Correct method name to addMessage
+  // content 参数类型调整
+  async addMessageToChat(chatId: number, role: string, content: Message['content']): Promise<number> {
+    return this.messageRepository.createMessage(chatId, role, content);
   }
 
   async getChatHistory(chatId: number): Promise<Message[]> {
