@@ -26,14 +26,15 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
   // Ensure API key is available for file uploads if needed
   if (!apikey) {
     console.error("API Key not provided for file upload service.");
+    // It's better to throw an error that can be caught by the route handler and returned as a 4xx/5xx
     throw new Error("API Key is required for file uploads.");
   }
 
-  // >>> 关键修改：使用正确的类名 GoogleGenAI，并通过 .files 访问文件服务 <<<
   const aiForFiles = new GoogleGenAI({ apiKey: apikey });
-  const fileService = aiForFiles.files; // 正确访问 .files 服务
+  // No need for a separate fileService variable if using aiForFiles.files directly
 
-  for (const [key, file] of fileEntries) {
+  for (const [_key, fileValue] of fileEntries) { // Renamed 'key' to '_key' as it's not used
+    const file = fileValue as File; // Explicitly cast to File
     if (file instanceof File) {
       const fileSizeLimit = 20 * 1024 * 1024; // 20MB
 
@@ -52,37 +53,61 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
         } else {
           // 大于 20MB，使用 Google GenAI 的文件上传 API
           console.log(`正在上传大文件: ${file.name}, 大小: ${file.size / (1024 * 1024)}MB`);
-          // >>> 关键修改：使用 fileService 实例调用 uploadFile <<<
-          const uploadResult = await fileService.uploadFile(file, { 
-            mimeType: file.type,
-            displayName: file.name,
+          
+          // >>> KEY CHANGE HERE <<<
+          // Corrected call to the file upload API
+          const uploadResult = await aiForFiles.files.upload({
+            file: file, // Pass the File object
+            config: {   // Configuration object
+              mimeType: file.type,
+              displayName: file.name,
+            }
           });
+          
+          // Ensure uploadResult.file.uri is the correct path to access the URI
+          if (!uploadResult.file || !uploadResult.file.uri) {
+            console.error("File upload result did not contain expected file URI:", uploadResult);
+            throw new Error(`文件上传成功但未返回有效的URI: ${file.name}`);
+          }
           console.log(`文件上传完成 ${file.name}, URI: ${uploadResult.file.uri}`);
 
           contents.push({
             fileData: {
               mimeType: file.type,
-              uri: uploadResult.file.uri,
+              uri: uploadResult.file.uri, // Use the URI from the upload result
             },
           });
         }
       } catch (fileProcessError) {
         console.error(`处理文件 ${file.name} 时出错:`, fileProcessError);
-        // 增加更详细的错误日志捕获
+        let detailedMessage = `处理文件失败: ${file.name}`;
         if (fileProcessError instanceof Error) {
-            console.error(`错误详情: ${fileProcessError.message}`);
-            if (fileProcessError.stack) {
-                console.error(`错误堆栈: ${fileProcessError.stack}`);
+            detailedMessage += ` - ${fileProcessError.message}`;
+            // Check if it's a Google API error structure
+            // deno-lint-ignore no-explicit-any
+            const googleError = fileProcessError as any;
+            if (googleError.error && googleError.error.message) {
+                detailedMessage += ` (Google API Error: ${googleError.error.message})`;
+            } else if (googleError.message && googleError.message.includes("fetch")) {
+                detailedMessage += ` (可能是网络或API Key权限问题)`;
             }
-        } else if (typeof fileProcessError === 'object' && fileProcessError !== null && 'error' in fileProcessError) {
-             // 尝试解析 Google API 返回的特定错误结构
-             console.error(`Google API 错误响应:`, JSON.stringify(fileProcessError, null, 2));
-             if (fileProcessError.error && fileProcessError.error.message) {
-                 throw new Error(`处理文件失败: ${file.name} - Google API 错误: ${fileProcessError.error.message}`);
-             }
+        } else if (typeof fileProcessError === 'object' && fileProcessError !== null) {
+            // deno-lint-ignore no-explicit-any
+            const errorObj = fileProcessError as any;
+            if (errorObj.error && errorObj.error.message) {
+                 detailedMessage += ` - Google API 错误: ${errorObj.error.message}`;
+            } else {
+                try {
+                    detailedMessage += ` - 错误详情: ${JSON.stringify(fileProcessError)}`;
+                } catch (e) {
+                    detailedMessage += ` - (无法序列化错误对象)`;
+                }
+            }
+        } else {
+            detailedMessage += ` - 未知错误类型`;
         }
-        console.error(`完整错误对象:`, JSON.stringify(fileProcessError, Object.getOwnPropertyNames(fileProcessError), 2));
-        throw new Error(`处理文件失败: ${file.name} - ${fileProcessError.message || '未知错误'}`);
+        console.error(`完整错误对象详情:`, JSON.stringify(fileProcessError, Object.getOwnPropertyNames(fileProcessError), 2));
+        throw new Error(detailedMessage);
       }
     }
   }
@@ -114,12 +139,12 @@ export async function processAIRequest(
     throw new Error("No content provided to AI model for processing.");
   }
 
-  // >>> 关键修改：使用正确的类名 GoogleGenAI <<<
-  const ai = new GoogleGenAI({ apiKey: apikey }); // 这里的ai实例用于generateContent
+  const ai = new GoogleGenAI({ apiKey: apikey }); // This instance is for generateContent
 
+  // deno-lint-ignore no-explicit-any
   const generationConfig: any = {};
   if (responseModalities.length > 0) {
-    generationConfig.responseMimeTypes = responseModalities; // Correct usage for responseModalities in generationConfig
+    generationConfig.responseMimeTypes = responseModalities;
   }
 
   try {
@@ -162,19 +187,32 @@ export async function processAIRequest(
     }
   } catch (error) {
     console.error("Error generating content from AI model:", error);
-    // 增加更详细的错误日志捕获
+    let detailedMessage = `AI模型生成内容错误`;
     if (error instanceof Error) {
-        console.error(`AI生成内容错误详情: ${error.message}`);
-        if (error.stack) {
-            console.error(`AI生成内容错误堆栈: ${error.stack}`);
+        detailedMessage += ` - ${error.message}`;
+        // deno-lint-ignore no-explicit-any
+        const googleError = error as any;
+        if (googleError.error && googleError.error.message) {
+            detailedMessage += ` (Google API Error: ${googleError.error.message})`;
+        } else if (googleError.message && googleError.message.includes("API key not valid")) {
+            detailedMessage += ` (请检查API Key是否有效或已启用Gemini API)`;
         }
-    } else if (typeof error === 'object' && error !== null && 'error' in error) {
-         // 尝试解析 Google API 返回的特定错误结构
-         console.error(`Google API AI生成错误响应:`, JSON.stringify(error, null, 2));
-         if (error.error && error.error.message) {
-             throw new Error(`AI模型生成内容错误: Google API 错误: ${error.error.message}`);
-         }
+    } else if (typeof error === 'object' && error !== null) {
+        // deno-lint-ignore no-explicit-any
+        const errorObj = error as any;
+        if (errorObj.error && errorObj.error.message) {
+             detailedMessage += ` - Google API 错误: ${errorObj.error.message}`;
+        } else {
+            try {
+                detailedMessage += ` - 错误详情: ${JSON.stringify(error)}`;
+            } catch (e) {
+                detailedMessage += ` - (无法序列化错误对象)`;
+            }
+        }
+    } else {
+        detailedMessage += ` - 未知错误类型`;
     }
-    throw new Error(`AI模型生成内容错误: ${error.message || '未知错误'}`);
+    console.error(`完整AI生成错误对象详情:`, JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+    throw new Error(detailedMessage);
   }
 }
