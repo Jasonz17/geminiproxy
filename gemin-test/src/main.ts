@@ -15,6 +15,7 @@ const aiService = new AIService(); // Create an instance if the class has method
 
 // 连接数据库并在路由中初始化客户端
 await dbClient.connect();
+await ensureTablesExist(); // 确保数据库表存在
 await initializeDatabaseClient(dbClient);
 
 console.log("Server running on http://localhost:8000/");
