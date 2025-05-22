@@ -5,7 +5,7 @@ import { serveFile } from "https://deno.land/std@0.224.0/http/file_server.ts";
 import { handleProcessRequest } from "./services/ai.service.ts";
 import { handleChatRequest, initializeDatabaseClient } from "./routes/chat.route.ts";
 import { AIService } from "./services/ai.service.ts"; // Import AIService class if needed
-import { client as dbClient } from "./database/client.ts"; // Import the client instance
+import { client as dbClient, ensureTablesExist } from "./database/client.ts"; // Import the client instance and ensureTablesExist function
 
 // 获取当前脚本所在的目录
 const __dirname = dirname(fromFileUrl(import.meta.url));
