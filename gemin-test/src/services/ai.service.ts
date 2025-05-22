@@ -181,45 +181,9 @@ export async function handleProcessRequest(req: Request): Promise<Response> {
         }
 
 
-      // 处理响应，检查文本和图片部分
-      if (result && result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts) {
-        const parts = result.candidates[0].content.parts;
-        let responseContent = '';
-        let imageData = null;
-
-        for (const part of parts) {
-          if (part.text) {
-            responseContent += part.text + '\n';
-          } else if (part.inlineData) {
-            // 找到图片数据，这里只记录，后续需要修改前端来处理
-            console.log('Received image data:', part.inlineData.mimeType);
-            // For now, just indicate that image data was received
-            responseContent += `[Image data received: ${part.inlineData.mimeType}]\n`;
-            imageData = part.inlineData; // Store image data if needed later
-          }
-        }
-
-        if (parts.length > 0) {
-           // Return the parts array as JSON
-           return new Response(JSON.stringify(parts), {
-             headers: { "Content-Type": "application/json" },
-           });
-        } else {
-           return new Response("Received empty response from AI", { status: 500 });
-        }
-
-      } else {
-        console.error("Unexpected API response structure:", JSON.stringify(result, null, 2));
-        return new Response("Error: Unexpected API response structure", { status: 500 });
-      }
-
     } catch (error) {
       console.error("Error processing request:", error);
       return new Response(`Error: ${error.message}`, { status: 500 });
     }
-  }
-} catch (error) {
-    console.error("Error processing request:", error);
-    return new Response(`Error: ${error.message}`, { status: 500 });
   }
 }
