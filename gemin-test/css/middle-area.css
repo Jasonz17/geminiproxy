@@ -15,7 +15,7 @@
     transition: all 0.3s ease;
     min-width: 0; /* 确保flex item可以正确缩小 */
     overflow: hidden; /* 防止内容溢出 */
-    /* 移除以下两行，让flex属性控制尺寸 */
+    /* 移除 height: 100%; 和 width: 100%; - 这导致了布局问题 */
     /* height: 100%; */
     /* width: 100%; */
 }
