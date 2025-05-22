@@ -4,7 +4,7 @@ import { ChatService } from "../services/chat.service.ts";
 import { processAIRequest, parseFormDataToContents } from "../services/ai.service.ts";
 import { Client } from "jsr:@db/postgres";
 import { Message } from "../database/models/message.ts";
-import { Modality, Content, Part } from "npm:@google/genai"; // Modality 已被移除，因为我们直接用MIME字符串
+import { Content, Part } from "npm:@google/genai"; // 移除了 Modality
 
 let dbClient: Client | null = null;
 const decoder = new TextDecoder();
@@ -49,18 +49,11 @@ export async function handleChatRequest(req: Request): Promise<Response> {
 
       const userContentParts: Part[] = await parseFormDataToContents(formData, messageText, apikey);
       
-      // 检查是否有有效的用户输入部分，如果没有，则不继续
       if (userContentParts.length === 0) {
-        // 即使文本为空，如果上传了文件，userContentParts 也不会为空
-        // 只有当文本为空，且没有文件，且没有可处理的URL时，这里才可能为空
-        console.warn("没有有效的用户输入内容 (文本、文件或URL图片) 被解析。");
-        // 可以选择返回错误或一个提示消息
-        // 为了简单，如果确实没有任何 part，processAIRequest 会抛错，这里可以先不处理
         if (!messageText.trim() && !Array.from(formData.values()).some(v => v instanceof File)) {
              return new Response("请输入消息或上传文件。", { status: 400 });
         }
       }
-
 
       await chatService.addMessageToChat(currentChatId, "user", userContentParts);
       console.log(`用户消息已保存到数据库 (Chat ID: ${currentChatId}):`, userContentParts);
@@ -75,7 +68,6 @@ export async function handleChatRequest(req: Request): Promise<Response> {
 
       let responseMimeTypesForConfig: string[] = []; 
       if (model === 'gemini-2.0-flash-preview-image-generation') {
-        // *** 关键修改：只请求图像的MIME类型 ***
         responseMimeTypesForConfig = ["image/png"]; 
         console.log(`为图像生成模型 ${model} 设置 responseMimeTypes:`, responseMimeTypesForConfig);
       } else {
@@ -87,11 +79,11 @@ export async function handleChatRequest(req: Request): Promise<Response> {
       }
       
       const aiResponse = await processAIRequest(
-        model,
+        model, // 第一个参数是 modelName
         apikey,
-        fullAiContents,
-        streamEnabled,
-        responseMimeTypesForConfig
+        fullAiContents, // 第二个参数是 historyContents (Content[])
+        streamEnabled,  // 第三个参数是 streamEnabled
+        responseMimeTypesForConfig // 第四个参数是 responseMimeTypes (string[])
       );
       
       if (streamEnabled) {
