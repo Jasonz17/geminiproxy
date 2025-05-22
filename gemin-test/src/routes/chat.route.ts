@@ -38,8 +38,10 @@ export async function handleChatRequest(req: Request, aiService: AIService): Pro
       // Files are also in formData, but we'll handle them later if needed
 
       // If no chatId is provided, create a new chat
-      let currentChatId = chatId;
-      if (!currentChatId) {
+      let currentChatId: number;
+      if (chatId) {
+        currentChatId = parseInt(chatId as string, 10); // Parse chatId as integer
+      } else {
         currentChatId = await chatService.createNewChat();
         console.log(`New chat created with ID: ${currentChatId}`);
       }
