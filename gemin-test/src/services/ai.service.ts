@@ -196,10 +196,13 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
 }
 
 
+// src/services/ai.service.ts
+// ... (其他部分，包括 pollFileState, fetchImageFromUrl, parseFormDataToContents 保持不变) ...
+
 export async function processAIRequest(
-  modelName: string, // Renamed to modelName to avoid conflict
+  modelName: string,
   apikey: string,
-  historyContents: Content[], // Full conversation history including the latest user message
+  historyContents: Content[],
   streamEnabled: boolean,
   responseMimeTypes: string[] = []
 ): Promise<ReadableStream<Uint8Array> | Array<Part>> {
@@ -212,76 +215,52 @@ export async function processAIRequest(
 
   const aiForGenerate = new GoogleGenAI({ apiKey: apikey });
 
-  // deno-lint-ignore no-explicit-any
   const generationConfig: any = {};
   if (responseMimeTypes.length > 0) {
     generationConfig.responseMimeTypes = responseMimeTypes;
     console.log(`在 processAIRequest 中设置 generationConfig.responseMimeTypes:`, responseMimeTypes);
   }
 
-  // *** 核心修改：构建 generateContent 的请求体 ***
   let requestForGenerateContent: GenerateContentRequest;
 
   if (modelName === 'gemini-2.0-flash-preview-image-generation') {
-    // 对于图像生成，通常只需要当前的文本提示。
-    // 从 historyContents 中提取最后一个（即当前）用户消息的 parts。
-    // 假设 historyContents 至少有一条，并且最后一条是用户消息。
     const currentUserContent = historyContents[historyContents.length - 1];
     if (!currentUserContent || currentUserContent.role !== 'user' || !currentUserContent.parts || currentUserContent.parts.length === 0) {
       throw new Error("图像生成需要一个有效的当前用户文本提示。");
     }
-
-    // 如果当前用户消息包含文本和输入图片（用于图片编辑），则使用这些 parts
-    // 如果只包含文本（用于文生图），也使用这些 parts
     const aktuellenParts = currentUserContent.parts;
     console.log(`图像生成模型 (${modelName}) 使用的 parts:`, JSON.stringify(aktuellenParts));
-
     requestForGenerateContent = {
-      // contents 在这种情况下可以是 Part[] (如果SDK支持，会自动包装成 user role)
-      // 或者是一个只包含当前用户输入的 Content[]
-      // 为了保险，我们构造成 Content[]
-      contents: [{ role: 'user', parts: aktuellenParts }], // 只发送当前用户的输入 parts
-      generationConfig: generationConfig,
-      // tools: undefined, // 如果不需要 function calling
-      // safetySettings: undefined, // 如果不需要自定义安全设置
-      // systemInstruction: undefined, // 如果模型支持且需要系统指令
+      contents: [{ role: 'user', parts: aktuellenParts }],
+      // generationConfig: generationConfig, // generationConfig 会在 getModel 时传入
     };
-    // 注意：如果图像生成模型也需要历史上下文，那么应该继续使用完整的 historyContents。
-    // 但通常“文生图”或“图+文生图”更多是基于当前输入。
-    // 如果需要历史，则 requestForGenerateContent.contents = historyContents;
-
+    // 如果图像生成模型也需要历史上下文，则:
+    // requestForGenerateContent.contents = historyContents;
   } else {
-    // 对于其他模型，使用完整的对话历史
     requestForGenerateContent = {
       contents: historyContents,
-      generationConfig: generationConfig,
+      // generationConfig: generationConfig, // generationConfig 会在 getModel 时传入
     };
   }
-  console.log(`最终发送给 ${modelName} 的请求结构:`, JSON.stringify(requestForGenerateContent, null, 2));
-  // *** 修改结束 ***
+  console.log(`最终发送给 ${modelName} 的请求的 contents 部分:`, JSON.stringify(requestForGenerateContent.contents, null, 2));
 
 
   try {
+    const generativeModel = aiForGenerate.getModel({ model: modelName, generationConfig }); // 将generationConfig在此处设置
+
     if (streamEnabled) {
-      // 对于流式，请求结构通常与非流式相同
-      const streamResult = await aiForGenerate.getModel({ model: modelName }).generateContentStream(requestForGenerateContent);
-      // 或者: const streamResult = await aiForGenerate.models.generateContentStream({ model: modelName, ...requestForGenerateContent });
-      // SDK 的 getModel().generateContentStream() 和 models.generateContentStream() 接受的参数结构可能略有不同。
-      // GenerateContentStreamRequest 也是 GenerateContentRequest
-      // 所以直接传递 requestForGenerateContent 应该是可以的。
-      // 如果不行，则需要拆分：
-      // const streamResult = await aiForGenerate.getModel({ model: modelName })
-      //   .generateContentStream({ contents: requestForGenerateContent.contents, generationConfig: requestForGenerateContent.generationConfig });
-      // 为了保险，我们用更明确的方式，确保 modelName 是在 getModel 时指定的：
-      const generativeModel = aiForGenerate.getModel({ model: modelName, generationConfig }); // 将generationConfig也在此处设置
+      // *** 修正点：移除这里的 const 声明，因为 streamResult 已经在外部声明（如果需要）
+      // 或者更好的方式是，将 streamResult 的声明和赋值都放在这个 if 块内部
+      // *** 我们选择后者，让 streamResult 的作用域仅限于此 if 块 ***
       const streamResult = await generativeModel.generateContentStream({ contents: requestForGenerateContent.contents });
+      // const streamResult = await generativeModel.generateContentStream(requestForGenerateContent); // 也可以这样，如果 GenerateContentRequest 兼容
 
 
       const encoder = new TextEncoder();
       return new ReadableStream({
         async start(controller) {
           try {
-            for await (const chunk of streamResult.stream) { // 确保访问 .stream
+            for await (const chunk of streamResult.stream) {
               if (chunk.candidates && chunk.candidates.length > 0 && chunk.candidates[0].content && chunk.candidates[0].content.parts) {
                 controller.enqueue(encoder.encode(JSON.stringify(chunk.candidates[0].content.parts) + '\n'));
               } else if (chunk.candidates && chunk.candidates.length > 0 && chunk.candidates[0].finishReason) {
@@ -298,15 +277,10 @@ export async function processAIRequest(
           }
         }
       });
-    } else {
-      // deno-lint-ignore no-explicit-any
-      // const result: any = await aiForGenerate.models.generateContent({model: modelName, ...requestForGenerateContent});
-      // 与流式调用方式统一：
-      const generativeModel = aiForGenerate.getModel({ model: modelName, generationConfig });
+    } else { // 非流式
       const result = await generativeModel.generateContent({ contents: requestForGenerateContent.contents });
+      // const result = await generativeModel.generateContent(requestForGenerateContent); // 也可以这样
 
-
-      // 非流式响应现在是 GenerateContentResult，其响应在 .response 属性下
       if (result.response && result.response.candidates && result.response.candidates.length > 0 && result.response.candidates[0].content && result.response.candidates[0].content.parts) {
         return result.response.candidates[0].content.parts;
       } else {
@@ -318,7 +292,6 @@ export async function processAIRequest(
                 throw new Error(`请求可能因安全或其他策略被阻止 (non-stream): ${blockReason}.详情: ${JSON.stringify(result.response.promptFeedback.safetyRatings)}`);
             }
         }
-        // 如果 result.response 本身不存在
         if (!result.response) {
             console.error("AI服务返回的 result 对象中缺少 response 属性. 完整 result:", JSON.stringify(result, null, 2));
         }
@@ -326,7 +299,7 @@ export async function processAIRequest(
       }
     }
   } catch (error) {
-    // ... (错误处理和日志记录逻辑保持不变) ...
+    // ... (错误处理逻辑保持不变) ...
     console.error("Error generating content from AI model:", error);
     let detailedMessage = `AI模型生成内容错误`;
     if (error instanceof Error) {
