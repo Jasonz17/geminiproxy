@@ -105,7 +105,7 @@ export async function processAIRequest(
     throw new Error("No content provided to AI model for processing.");
   }
 
-  const ai = new GoogleGenAI({ apiKey: apikey }); // 这里的ai实例用于generateContent，这是正确的
+  const ai = new GoogleGenAI({ apiKey: apikey }); // 这里的ai实例用于generateContent
 
   const generationConfig: any = {};
   if (responseModalities.length > 0) {
