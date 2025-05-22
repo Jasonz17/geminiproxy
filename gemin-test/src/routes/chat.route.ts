@@ -2,7 +2,7 @@
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { ChatService } from "../services/chat.service.ts";
-import { connectDatabase } from "../database/client.ts";
+import { connectDatabase } from "../database/client.ts"; // Remove this import
 import { Client } from "jsr:@db/postgres";
 import { AIService } from "../services/ai.service.ts"; // Import AIService
 import { Message } from "../database/models/message.ts"; // Import Message type
@@ -17,7 +17,7 @@ let dbClient: Client | null = null;
 // Function to initialize the database client (can be called from main.ts)
 export async function initializeDatabaseClient(client: Client) {
   dbClient = client;
-  await connectDatabase(); // Ensure connection is established
+  // await connectDatabase(); // Remove this line
 }
 
 // Basic request handler for the chat route
