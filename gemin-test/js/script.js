@@ -29,6 +29,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // 初始化流式响应状态
     let isStreamEnabled = false;
 
+    // 存储当前聊天ID
+    let currentChatId = null;
+
     // 切换流式响应状态
     streamToggle.addEventListener('click', () => {
         isStreamEnabled = !isStreamEnabled;
@@ -56,6 +59,11 @@ document.addEventListener('DOMContentLoaded', () => {
         formData.append('apikey', apiKey);
         formData.append('input', text);
         formData.append('stream', isStreamEnabled.toString());
+
+        // 如果存在当前聊天ID，则添加到formData
+        if (currentChatId) {
+            formData.append('chatId', currentChatId);
+        }
 
         try {
             if (isStreamEnabled) {
@@ -100,7 +108,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 
-                const parts = await response.json();
+                const result = await response.json(); // 接收包含chatId和response的对象
+                const parts = result.response; // 获取AI响应内容
                 let messageContent = '';
                 
                 for (const part of parts) {
