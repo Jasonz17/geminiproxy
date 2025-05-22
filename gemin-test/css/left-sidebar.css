@@ -11,8 +11,18 @@
     border-radius: 15px; /* 增大圆角 */
     position: relative;
     box-sizing: border-box;
+    flex-shrink: 0; /* 确保侧边栏不收缩 */
 }
 
+/* 侧边栏折叠状态 */
+#left-sidebar.collapsed {
+    transform: translateX(-100%); /* 隐藏到左侧，而不是固定宽度 */
+    width: 0; /* 折叠后宽度为0 */
+    padding: 0; /* 折叠后移除内边距 */
+    border-right: none; /* 折叠后移除边框 */
+    visibility: hidden; /* 隐藏元素，不占用空间 */
+    /* transition: transform 0.3s ease, width 0.3s ease, padding 0.3s ease, border-right 0.3s ease; */
+}
 
 .sidebar-header-buttons {
     display: flex;
