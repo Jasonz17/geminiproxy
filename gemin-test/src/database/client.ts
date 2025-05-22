@@ -45,4 +45,7 @@ export async function disconnectDatabase() {
   try {
     await client.end();
     console.log("Database disconnected successfully");
-  } [^1]
+  } catch (error) {
+    console.error("Failed to disconnect from database:", error);
+  }
+}
