@@ -17,5 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
         listIcon.addEventListener('click', () => {
             leftSidebar.classList.toggle('collapsed');
         });
+    } else {
+        console.warn("Left sidebar toggle elements (list-icon or left-sidebar) not found.");
     }
 });
