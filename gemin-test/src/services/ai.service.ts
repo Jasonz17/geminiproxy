@@ -179,8 +179,6 @@ export async function handleProcessRequest(req: Request): Promise<Response> {
           console.error("Unexpected API response structure:", JSON.stringify(result, null, 2));
           return new Response("Error: Unexpected API response structure", { status: 500 });
         }
-
-
  catch (error) {
       console.error("Error processing request:", error);
       return new Response(`Error: ${error.message}`, { status: 500 });
