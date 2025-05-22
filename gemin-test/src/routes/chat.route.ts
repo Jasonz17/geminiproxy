@@ -4,7 +4,7 @@ import { ChatService } from "../services/chat.service.ts";
 import { processAIRequest, parseFormDataToContents } from "../services/ai.service.ts";
 import { Client } from "jsr:@db/postgres";
 import { Message } from "../database/models/message.ts";
-import { Modality } from "npm:@google/genai"; // 修正 import 路径和类名
+import { Modality } from "npm:@google/genai"; // 确保这里是 @google/genai
 
 let dbClient: Client | null = null;
 const decoder = new TextDecoder();
