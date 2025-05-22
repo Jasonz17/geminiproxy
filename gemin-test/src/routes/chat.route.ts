@@ -4,7 +4,7 @@ import { ChatService } from "../services/chat.service.ts";
 import { processAIRequest, parseFormDataToContents } from "../services/ai.service.ts";
 import { Client } from "jsr:@db/postgres";
 import { Message } from "../database/models/message.ts";
-import { Modality, Content, Part } from "npm:@google/genai";
+import { Modality, Content, Part } from "npm:@google/genai"; // Modality 已被移除，因为我们直接用MIME字符串
 
 let dbClient: Client | null = null;
 const decoder = new TextDecoder();
@@ -49,9 +49,18 @@ export async function handleChatRequest(req: Request): Promise<Response> {
 
       const userContentParts: Part[] = await parseFormDataToContents(formData, messageText, apikey);
       
-      if (userContentParts.length === 0 && !messageText.trim()) {
-        return new Response("没有提供文本或文件", { status: 400 });
+      // 检查是否有有效的用户输入部分，如果没有，则不继续
+      if (userContentParts.length === 0) {
+        // 即使文本为空，如果上传了文件，userContentParts 也不会为空
+        // 只有当文本为空，且没有文件，且没有可处理的URL时，这里才可能为空
+        console.warn("没有有效的用户输入内容 (文本、文件或URL图片) 被解析。");
+        // 可以选择返回错误或一个提示消息
+        // 为了简单，如果确实没有任何 part，processAIRequest 会抛错，这里可以先不处理
+        if (!messageText.trim() && !Array.from(formData.values()).some(v => v instanceof File)) {
+             return new Response("请输入消息或上传文件。", { status: 400 });
+        }
       }
+
 
       await chatService.addMessageToChat(currentChatId, "user", userContentParts);
       console.log(`用户消息已保存到数据库 (Chat ID: ${currentChatId}):`, userContentParts);
@@ -64,42 +73,27 @@ export async function handleChatRequest(req: Request): Promise<Response> {
           fullAiContents.push({ role: role, parts: parts });
       }
 
-      // --- 关键修正点 ---
-      // responseMimeTypes 应该是一个包含具体 MIME 类型字符串的数组
       let responseMimeTypesForConfig: string[] = []; 
       if (model === 'gemini-2.0-flash-preview-image-generation') {
-        // 根据错误提示，模型接受 IMAGE 和 TEXT。
-        // 我们需要提供具体的 MIME 类型。通常图像是 image/png 或 image/jpeg。
-        // 文本是 text/plain。
-        responseMimeTypesForConfig = ["image/png", "text/plain"]; 
+        // *** 关键修改：只请求图像的MIME类型 ***
+        responseMimeTypesForConfig = ["image/png"]; 
         console.log(`为图像生成模型 ${model} 设置 responseMimeTypes:`, responseMimeTypesForConfig);
       } else {
-        // 对于其他模型，通常不需要显式设置 responseMimeTypes，它们默认返回文本。
-        // 如果有其他模型也需要特定响应类型，可以在这里添加逻辑。
         console.log(`模型 ${model} 使用默认响应类型 (通常是文本)`);
       }
-      // --- 修正结束 ---
-
 
       if (!apikey) {
         return new Response("API Key is missing for AI service call.", { status: 400 });
       }
       
-      // 将 responseMimeTypesForConfig 传递给 processAIRequest
-      // processAIRequest 内部会用它来设置 generationConfig.responseMimeTypes
-      // 注意：processAIRequest 的第五个参数是 responseModalities，我们现在直接传递 string[]
-      // 所以需要修改 processAIRequest 的签名或内部逻辑来接收 string[]
-      // 为了保持最小改动，我们修改 processAIRequest 内部如何使用第五个参数
-
       const aiResponse = await processAIRequest(
         model,
         apikey,
         fullAiContents,
         streamEnabled,
-        responseMimeTypesForConfig // <--- 传递 string[]
+        responseMimeTypesForConfig
       );
       
-      // ... (后续的流式和非流式响应处理逻辑保持不变) ...
       if (streamEnabled) {
         const aiMessagePartsAccumulator: Part[] = [];
         const encoder = new TextEncoder();
@@ -160,7 +154,7 @@ export async function handleChatRequest(req: Request): Promise<Response> {
           }
         });
 
-      } else {
+      } else { // 非流式
         const aiMessageParts = aiResponse as Part[];
         if (aiMessageParts && aiMessageParts.length > 0) {
             await chatService.addMessageToChat(currentChatId, "model", aiMessageParts);
