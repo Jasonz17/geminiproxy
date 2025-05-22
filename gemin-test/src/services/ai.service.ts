@@ -68,14 +68,21 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
         }
       } catch (fileProcessError) {
         console.error(`处理文件 ${file.name} 时出错:`, fileProcessError);
+        // 增加更详细的错误日志捕获
         if (fileProcessError instanceof Error) {
             console.error(`错误详情: ${fileProcessError.message}`);
             if (fileProcessError.stack) {
                 console.error(`错误堆栈: ${fileProcessError.stack}`);
             }
+        } else if (typeof fileProcessError === 'object' && fileProcessError !== null && 'error' in fileProcessError) {
+             // 尝试解析 Google API 返回的特定错误结构
+             console.error(`Google API 错误响应:`, JSON.stringify(fileProcessError, null, 2));
+             if (fileProcessError.error && fileProcessError.error.message) {
+                 throw new Error(`处理文件失败: ${file.name} - Google API 错误: ${fileProcessError.error.message}`);
+             }
         }
         console.error(`完整错误对象:`, JSON.stringify(fileProcessError, Object.getOwnPropertyNames(fileProcessError), 2));
-        throw new Error(`处理文件失败: ${file.name} - ${fileProcessError.message}`);
+        throw new Error(`处理文件失败: ${file.name} - ${fileProcessError.message || '未知错误'}`);
       }
     }
   }
@@ -115,41 +122,59 @@ export async function processAIRequest(
     generationConfig.responseMimeTypes = responseModalities; // Correct usage for responseModalities in generationConfig
   }
 
-  if (streamEnabled) {
-    const stream = await ai.models.generateContentStream({
-      model: model,
-      contents: contents,
-      generationConfig: generationConfig,
-    });
+  try {
+    if (streamEnabled) {
+      const stream = await ai.models.generateContentStream({
+        model: model,
+        contents: contents,
+        generationConfig: generationConfig,
+      });
 
-    const encoder = new TextEncoder();
-    return new ReadableStream({
-      async start(controller) {
-        try {
-          for await (const chunk of stream) {
-            if (chunk.candidates && chunk.candidates[0]?.content?.parts) {
-              controller.enqueue(encoder.encode(JSON.stringify(chunk.candidates[0].content.parts) + '\n'));
+      const encoder = new TextEncoder();
+      return new ReadableStream({
+        async start(controller) {
+          try {
+            for await (const chunk of stream) {
+              if (chunk.candidates && chunk.candidates[0]?.content?.parts) {
+                controller.enqueue(encoder.encode(JSON.stringify(chunk.candidates[0].content.parts) + '\n'));
+              }
             }
+            controller.close();
+          } catch (error) {
+            console.error("Error during AI stream processing:", error);
+            controller.error(error);
           }
-          controller.close();
-        } catch (error) {
-          console.error("Error during AI stream processing:", error);
-          controller.error(error);
         }
-      }
-    });
-  } else {
-    const result = await ai.models.generateContent({
-      model: model,
-      contents: contents,
-      generationConfig: generationConfig,
-    });
-        
-    if (result && result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts) {
-      return result.candidates[0].content.parts;
+      });
     } else {
-      console.error("AI服务返回了意外的结构:", JSON.stringify(result, null, 2));
-      throw new Error("AI服务返回了意外的结构");
+      const result = await ai.models.generateContent({
+        model: model,
+        contents: contents,
+        generationConfig: generationConfig,
+      });
+          
+      if (result && result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts) {
+        return result.candidates[0].content.parts;
+      } else {
+        console.error("AI服务返回了意外的结构:", JSON.stringify(result, null, 2));
+        throw new Error("AI服务返回了意外的结构");
+      }
     }
+  } catch (error) {
+    console.error("Error generating content from AI model:", error);
+    // 增加更详细的错误日志捕获
+    if (error instanceof Error) {
+        console.error(`AI生成内容错误详情: ${error.message}`);
+        if (error.stack) {
+            console.error(`AI生成内容错误堆栈: ${error.stack}`);
+        }
+    } else if (typeof error === 'object' && error !== null && 'error' in error) {
+         // 尝试解析 Google API 返回的特定错误结构
+         console.error(`Google API AI生成错误响应:`, JSON.stringify(error, null, 2));
+         if (error.error && error.error.message) {
+             throw new Error(`AI模型生成内容错误: Google API 错误: ${error.error.message}`);
+         }
+    }
+    throw new Error(`AI模型生成内容错误: ${error.message || '未知错误'}`);
   }
 }
