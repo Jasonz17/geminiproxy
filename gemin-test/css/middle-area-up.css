@@ -7,42 +7,55 @@
     flex-basis: 0;
     overflow-y: auto;
     margin-bottom: 10px;
-    background-color: #ffffff;
+    background-color: var(--chat-background-color, #f0f2f5); /* 默认背景色 */
     padding: 15px;
     display: flex;
     flex-direction: column;
     gap: 10px;
+    scroll-behavior: smooth; /* 平滑滚动 */
 }
 
-/* 消息气泡样式 */
+/* 所有消息的通用样式 */
 .message {
-    padding: 0px;
-    margin: 0;
-    border-radius: 8px;
-    max-width: 80%;
-    font-size: 14px;
+    max-width: 70%; /* 消息最大宽度 */
+    padding: 10px 15px; /* <--- 关键修改：增加内边距，形成气泡感 */
+    border-radius: 18px; /* <--- 关键修改：增大圆角，更像气泡 */
+    font-size: 0.95em; /* 稍微调整字体大小 */
+    line-height: 1.4; /* 改善行高可读性 */
+    word-wrap: break-word; /* 单词过长时换行 */
+    white-space: pre-wrap; /* 保留空白和换行 */
+    box-shadow: 0 1px 0.5px rgba(0, 0, 0, 0.13); /* 添加细微阴影 */
+    overflow-wrap: break-word; /* 确保长单词在不使用 word-wrap 时也能换行 */
+    /* 解决旧样式中 padding: 0px 导致文本和图片直接贴边的问题 */
 }
 
-.message.user {
-    background-color: #e3f2fd;
-    align-self: flex-end;
+/* 用户消息样式 (右对齐，绿色背景) */
+.user-message {
+    background-color: var(--user-message-color, #dcf8c6); /* 淡绿色气泡 */
+    color: var(--user-message-text-color, #333); /* 消息文字颜色 */
+    align-self: flex-end; /* 在 Flex 容器中靠右对齐 */
+    margin-left: auto; /* 自动左边距，配合 align-self 实现右对齐 */
+    text-align: left; /* 消息内容本身左对齐 */
 }
 
-.message.ai {
-    background-color: #f5f5f5;
-    align-self: flex-start;
+/* AI 消息样式 (左对齐，灰色背景) */
+.ai-message {
+    background-color: var(--ai-message-color, #ffffff); /* 白色或浅灰色气泡 */
+    color: var(--ai-message-text-color, #333); /* 消息文字颜色 */
+    align-self: flex-start; /* 在 Flex 容器中靠左对齐 */
+    margin-right: auto; /* 自动右边距，配合 align-self 实现左对齐 */
+    text-align: left; /* 消息内容本身左对齐 */
 }
 
-/* 聊天气泡外下方的文件预览容器样式 */
+/* 聊天气泡外下方的文件预览容器样式 (用户消息的文件预览) */
 .message-file-preview-container {
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
     margin-top: 5px;
-    padding: 0;
-    border-top: none;
-    clear: both;
-    width: 100%;
+    clear: both; /* 清除浮动 */
+    max-width: 70%; /* 确保与消息宽度一致 */
+    align-self: flex-end; /* <--- 关键修改：用户文件的预览也靠右对齐 */
 }
 
 .message-preview-item {
@@ -50,21 +63,200 @@
     flex-direction: column;
     align-items: center;
     gap: 5px;
+    width: 80px; /* 固定宽度 */
+    height: 100px; /* 固定高度，包含文字 */
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 5px;
+    background-color: #f9f9f9;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    overflow: hidden; /* 防止内容溢出 */
 }
 
 .message-preview-item img {
-    max-width: 80px;
-    max-height: 80px;
+    max-width: 100%;
+    max-height: 80%; /* 留出空间给文件名 */
     object-fit: contain;
     border-radius: 4px;
 }
 
 .message-file-name {
-    font-size: 12px;
+    font-size: 11px;
     color: #555;
     text-align: center;
-    max-width: 80px;
+    max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal; /* 允许文件名换行 */
+    word-wrap: break-word; /* 强制长文件名换行 */
+    line-height: 1.2;
+    flex-grow: 1; /* 占据剩余空间 */
+}
+
+/* AI生成图片的样式，如果图片是AI消息的一部分 */
+.ai-message img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    margin-top: 10px; /* 如果文本和图片都在一个AI消息气泡内 */
+    display: block; /* 确保图片独占一行 */
+}
+
+/* 加载动画 (从 loading-animation.css 整合过来) */
+.loading-animation {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 60px; /* 动画容器大小 */
+    height: 40px;
+    background-color: var(--ai-message-color, #ffffff); /* 匹配 AI 消息背景 */
+    border-radius: 18px;
+    padding: 5px 10px;
+    margin-right: auto; /* 左对齐 */
+    box-shadow: 0 1px 0.5px rgba(0, 0, 0, 0.13);
+}
+
+.dot-pulse {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  border-radius: 5px;
+  background-color: var(--dot-color, #999);
+  color: var(--dot-color, #999);
+  animation: dotPulse 1.5s infinite ease-in-out;
+  animation-delay: -0.24s;
+}
+
+.dot-pulse::before, .dot-pulse::after {
+  content: "";
+  display: inline-block;
+  position: absolute;
+  top: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 5px;
+  background-color: var(--dot-color, #999);
+  color: var(--dot-color, #999);
+  animation: dotPulse 1.5s infinite ease-in-out;
+}
+
+.dot-pulse::before {
+  left: -15px;
+  animation-delay: -0.48s;
+}
+
+.dot-pulse::after {
+  left: 15px;
+  animation-delay: 0s;
+}
+
+@keyframes dotPulse {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.8);
+    opacity: 0.7;
+  }
+}
+
+/* Markdown 样式 */
+.message pre {
+    background-color: #f3f3f3;
+    padding: 10px;
+    border-radius: 5px;
+    overflow-x: auto;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.85em;
+    margin-top: 10px;
+    border: 1px solid #eee;
+}
+
+.message code {
+    background-color: #f3f3f3;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9em;
+}
+
+/* 对于可能比 pre 更大的内联代码 */
+.message p code {
+    white-space: pre-wrap; /* 允许内联代码换行 */
+    word-break: break-all; /* 必要时在任意字符处断开 */
+}
+
+/* 列表 */
+.message ul, .message ol {
+    margin: 10px 0;
+    padding-left: 20px;
+}
+
+.message ul li, .message ol li {
+    margin-bottom: 5px;
+}
+
+/* 标题 */
+.message h1, .message h2, .message h3, .message h4, .message h5, .message h6 {
+    margin-top: 15px;
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+.message h1 { font-size: 1.5em; }
+.message h2 { font-size: 1.3em; }
+.message h3 { font-size: 1.1em; }
+
+/* 引用块 */
+.message blockquote {
+    border-left: 4px solid #ccc;
+    padding-left: 10px;
+    color: #666;
+    margin: 10px 0;
+}
+
+/* 分隔线 */
+.message hr {
+    border: 0;
+    height: 1px;
+    background: #eee;
+    margin: 20px 0;
+}
+
+/* 链接 */
+.message a {
+    color: #007bff;
+    text-decoration: none;
+}
+.message a:hover {
+    text-decoration: underline;
+}
+
+/* 表格样式 */
+.message table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 15px 0;
+}
+.message th, .message td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+}
+.message th {
+    background-color: #f2f2f2;
+}
+
+/* 暗色模式变量 (可选，如果你有暗色模式切换) */
+body.dark-mode {
+    --chat-background-color: #2c2c2c;
+    --user-message-color: #0056b3; /* 用户消息更深的蓝色 */
+    --user-message-text-color: #f0f0f0;
+    --ai-message-color: #3a3a3a; /* AI 消息更深的灰色 */
+    --ai-message-text-color: #f0f0f0;
+    --dot-color: #bbb;
 }
