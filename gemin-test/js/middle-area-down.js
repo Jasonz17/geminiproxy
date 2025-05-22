@@ -24,15 +24,30 @@ const tooltipTexts = {
     'video': '格式支持：MP4, MPEG, MOV, AVI, X-FLV, WMV, 3GPP, WEBM'
 };
 
-// 存储当前请求的控制器，用于中断请求
+// 存储当前请求的控制器
 let currentController = null;
+
+// >>> 关键修正：将 adjustInputHeight 变为模块内的全局函数 <<<
+function adjustInputHeight() {
+    const userInput = document.getElementById('user-input');
+    if (!userInput) return; // 确保元素存在
+
+    userInput.style.height = 'auto';
+    const maxHeight = parseInt(getComputedStyle(userInput).maxHeight, 10);
+    const calculatedHeight = Math.max(userInput.scrollHeight, 40);
+    userInput.style.height = Math.min(calculatedHeight, maxHeight) + 'px';
+    userInput.style.overflowY = calculatedHeight >= maxHeight ? 'auto' : 'hidden';
+    userInput.scrollTop = userInput.scrollHeight;
+}
+// <<< 关键修正结束 >>>
+
 
 // 初始化输入区域
 export function initializeInputArea(displayMessage) {
     const userInput = document.getElementById('user-input');
     const inputContainer = document.getElementById('input-container');
     const toolbarLeft = document.querySelector('.toolbar-left');
-    let isStreamMode = false; // 初始流式响应状态
+    let isStreamMode = false;
 
     // 确保元素存在才进行操作
     if (!userInput || !inputContainer || !toolbarLeft) {
@@ -49,19 +64,9 @@ export function initializeInputArea(displayMessage) {
     // 初始化工具栏图标
     initializeToolbar(toolbarLeft, filePreviewContainer);
 
-    // 输入框高度自动调整
-    function adjustInputHeight() {
-        userInput.style.height = 'auto';
-        const maxHeight = parseInt(getComputedStyle(userInput).maxHeight, 10);
-        const calculatedHeight = Math.max(userInput.scrollHeight, 40); // 最小高度40px
-        userInput.style.height = Math.min(calculatedHeight, maxHeight) + 'px';
-        userInput.style.overflowY = calculatedHeight >= maxHeight ? 'auto' : 'hidden';
-        userInput.scrollTop = userInput.scrollHeight; // 确保滚动到底部
-    }
-
-    // 初始化高度并添加监听器
-    adjustInputHeight();
-    userInput.addEventListener('input', adjustInputHeight);
+    // 输入框高度自动调整 (此处调用初始化，监听器在下面添加)
+    adjustInputHeight(); // 确保初始高度正确
+    userInput.addEventListener('input', adjustInputHeight); // 添加监听器
 
     // 添加流式响应开关按钮的点击事件
     const streamToggle = document.querySelector('.stream-toggle');
@@ -81,7 +86,7 @@ export function initializeInputArea(displayMessage) {
     // 添加键盘事件监听
     userInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault(); // 阻止默认换行行为
+            e.preventDefault();
             handleSendMessage(userInput, sendButton, filePreviewContainer, displayMessage, isStreamMode);
         }
     });
@@ -118,29 +123,29 @@ function handleToolClick(type, filePreviewContainer) {
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.accept = fileTypeMap[type];
-    fileInput.multiple = true; // 允许选择多个文件
+    fileInput.multiple = true;
     
-    fileInput.click(); // 模拟点击文件输入框
+    fileInput.click();
     
     fileInput.addEventListener('change', (e) => {
         const files = Array.from(e.target.files);
         files.forEach(file => {
-            selectedFiles.push(file); // 添加到全局数组
+            selectedFiles.push(file);
             const fileName = file.name;
             const fileExt = fileName.substring(fileName.lastIndexOf('.'));
             const fileNameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.'));
-            const maxLength = 16; // 文件名显示最大长度
+            const maxLength = 16;
             const displayName = fileNameWithoutExt.length > maxLength - fileExt.length
                 ? fileNameWithoutExt.substring(0, maxLength - fileExt.length) + '...' + fileExt
                 : fileName;
             
             const previewItem = document.createElement('div');
             previewItem.className = 'preview-item';
-            previewItem.dataset.fileName = fileName; // 存储原始文件名以便删除
+            previewItem.dataset.fileName = fileName;
             
             if (type === 'image') {
                 const img = document.createElement('img');
-                img.src = URL.createObjectURL(file); // 创建URL预览图片
+                img.src = URL.createObjectURL(file);
                 previewItem.appendChild(img);
             } else {
                 const fileNameDiv = document.createElement('div');
@@ -153,17 +158,16 @@ function handleToolClick(type, filePreviewContainer) {
             removeButton.className = 'remove-file';
             removeButton.innerHTML = '×';
             removeButton.addEventListener('click', () => {
-                // 从 selectedFiles 中移除对应文件
                 selectedFiles = selectedFiles.filter(f => f.name !== file.name);
-                previewItem.remove(); // 移除预览项
+                previewItem.remove();
                 if (selectedFiles.length === 0) {
-                    filePreviewContainer.style.display = 'none'; // 没有文件时隐藏容器
+                    filePreviewContainer.style.display = 'none';
                 }
             });
             previewItem.appendChild(removeButton);
             
             filePreviewContainer.appendChild(previewItem);
-            filePreviewContainer.style.display = 'flex'; // 显示容器
+            filePreviewContainer.style.display = 'flex';
         });
     });
 }
@@ -177,99 +181,87 @@ async function handleSendMessage(userInput, sendButton, filePreviewContainer, di
         return;
     }
     
-    // 如果有正在进行的请求，则点击发送按钮表示中断
     if (currentController) {
         currentController.abort();
         currentController = null;
-        sendButton.innerHTML = getSendButtonSvg(); // 恢复发送图标
+        sendButton.innerHTML = getSendButtonSvg();
         return;
     }
     
-    // 只有当有文本或文件时才发送消息
     if (messageText || selectedFiles.length > 0) {
         const modelSelect = document.getElementById('model-select');
-        const apiKey = modelSelect.getAttribute('data-apikey'); // 从model-select获取API密钥
+        const apiKey = modelSelect.getAttribute('data-apikey');
 
-        // 增强 API Key 验证
-        if (!apiKey || apiKey.trim() === '') { // 检查 apiKey 是否为空或只包含空白字符
+        if (!apiKey || apiKey.trim() === '') {
             alert('请在设置中输入有效的API Key！');
-            // 清理加载动画，如果已经添加了
             const loadingAnimation = chatDisplay.lastChild;
             if (loadingAnimation && loadingAnimation.classList.contains('ai')) {
                 loadingAnimation.remove();
             }
-            return; // 终止发送
+            return;
         }
-        // <<< 增强 API Key 验证 <<<
 
-        // 显示用户消息和文件（如果文本或文件存在）
-        // 传递一个包含文本和文件的对象给 displayMessage
         displayMessage({
             type: 'user',
-            content: messageText, // 这里是纯文本
-            files: selectedFiles // 这里是File对象数组，displayMessage会处理
+            content: messageText,
+            files: selectedFiles
         }, chatDisplay);
 
         const selectedModel = modelSelect.value;
         
         const formData = new FormData();
         formData.append('model', selectedModel);
-        formData.append('apikey', apiKey); // 确保这里传递的是非空的 apiKey
-        formData.append('input', messageText); // 用户输入的文本
+        formData.append('apikey', apiKey);
+        formData.append('input', messageText);
         formData.append('stream', isStreamMode.toString());
         if (currentChatId) {
-            formData.append('chatId', currentChatId.toString()); // 如果有chatId，则发送
+            formData.append('chatId', currentChatId.toString());
         }
 
         selectedFiles.forEach((file, index) => {
-            formData.append(`file${index}`, file); // 附加所有选中的文件
+            formData.append(`file${index}`, file);
         });
 
-        // 清空输入框和文件预览区 (修正：这里清空，后面不再填充)
-        userInput.value = '';
-        userInput.style.height = 'auto'; // 重置输入框高度
+        userInput.value = ''; // 清空输入框
+        adjustInputHeight(); // 调整高度以匹配清空后的内容
         filePreviewContainer.innerHTML = '';
-        selectedFiles = []; // 清空选中文件数组
+        selectedFiles = [];
         filePreviewContainer.style.display = 'none';
-
-        // 设置中断控制器
+        
         currentController = new AbortController();
-        sendButton.innerHTML = getStopButtonSvg(); // 切换到停止图标
+        sendButton.innerHTML = getStopButtonSvg();
 
-        // 创建AI消息元素并添加加载动画
         const aiMessageElement = document.createElement('div');
         aiMessageElement.classList.add('message', 'ai');
+        
         const loadingElement = document.createElement('div');
         loadingElement.classList.add('loading-animation');
-        loadingElement.innerHTML = '<div class="dot-pulse"></div>'; // 加载动画HTML
+        loadingElement.innerHTML = '<div class="dot-pulse"></div>';
         aiMessageElement.appendChild(loadingElement);
         chatDisplay.appendChild(aiMessageElement);
-        chatDisplay.scrollTop = chatDisplay.scrollHeight; // 滚动到底部
+        chatDisplay.scrollTop = chatDisplay.scrollHeight;
 
         try {
-            const response = await fetch('/chat', {
+            const response = await fetch('/chat', { // Endpoint should be /chat
                 method: 'POST',
                 signal: currentController.signal,
                 body: formData
             });
 
             if (!response.ok) {
-                // 尝试解析错误信息，确保 message 足够详细
                 let errorText = await response.text();
                 try {
                     const errorJson = JSON.parse(errorText);
                     errorText = errorJson.message || JSON.stringify(errorJson, null, 2);
                 } catch (e) {
-                    // 如果不是JSON，就用原始文本
+                    // Not JSON, use raw text
                 }
                 throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
             }
-            
-            // 移除加载动画
+
             loadingElement.remove();
 
             if (isStreamMode) {
-                // 从响应头中获取chatId（流式响应）
                 const chatIdHeader = response.headers.get('X-Chat-ID');
                 if (chatIdHeader) {
                     currentChatId = parseInt(chatIdHeader, 10);
@@ -277,34 +269,29 @@ async function handleSendMessage(userInput, sendButton, filePreviewContainer, di
                 }
                 await handleStreamResponse(response, aiMessageElement, chatDisplay);
             } else {
-                // 非流式响应处理
-                const result = await response.json(); // 解析整个JSON响应
-                // 从响应体中获取chatId
+                const result = await response.json();
                 if (result && result.chatId) {
                     currentChatId = result.chatId;
                     console.log('从非流式响应体中获取到chatId:', currentChatId);
                 }
-                await handleNormalResponse(result.response, aiMessageElement, chatDisplay); // 传入响应中的parts部分
+                await handleNormalResponse(result.response, aiMessageElement, chatDisplay);
             }
 
         } catch (error) {
             console.error('获取AI响应时出错:', error);
-            if (error.name !== 'AbortError') { // 排除用户中断引起的错误
-                // 确保加载动画被移除
+            if (error.name !== 'AbortError') {
                 loadingElement.remove();
-                // 显示错误消息
-                aiMessageElement.innerHTML = ''; // 清空AI消息元素
+                aiMessageElement.innerHTML = '';
                 displayMessage({
                     type: 'ai',
                     content: `发生错误: ${error.message}`
                 }, chatDisplay);
             }
         } finally {
-            currentController = null; // 重置控制器
-            sendButton.innerHTML = getSendButtonSvg(); // 恢复发送图标
-            // 确保输入框在发送后确实被清空
-            userInput.value = '';
-            adjustInputHeight(); // 调整高度以匹配清空后的内容
+            currentController = null;
+            sendButton.innerHTML = getSendButtonSvg();
+            // userInput.value = ''; // 已经在开始处理时清空
+            // adjustInputHeight(); // 已经在开始处理时调整
         }
     }
 }
@@ -313,13 +300,10 @@ async function handleSendMessage(userInput, sendButton, filePreviewContainer, di
 async function handleStreamResponse(response, aiMessageElement, chatDisplay) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-    let accumulatedTextContent = ''; // 累积文本内容，用于 marked 渲染
-    let mediaAndFileElements = []; // 累积图片、视频、音频和文件链接部分
+    let accumulatedTextContent = '';
+    let mediaAndFileElements = [];
 
-    // 清空 aiMessageElement 的初始内容（如加载动画）
     aiMessageElement.innerHTML = '';
-
-    // 创建一个用于放置文本内容的 div
     const textContainer = document.createElement('div');
     aiMessageElement.appendChild(textContainer);
 
@@ -328,16 +312,15 @@ async function handleStreamResponse(response, aiMessageElement, chatDisplay) {
         if (done) break;
         
         const chunk = decoder.decode(value, {stream: true});
-        const lines = chunk.split('\n').filter(line => line.trim()); // 按行分割，过滤空行
+        const lines = chunk.split('\n').filter(line => line.trim());
         
         for (const line of lines) {
             try {
-                const parts = JSON.parse(line); // 每行是一个JSON数组
+                const parts = JSON.parse(line);
                 parts.forEach(part => {
                     if (part.text) {
                         accumulatedTextContent += part.text;
                     } else if (part.inlineData) {
-                        // 图像数据不能直接追加到 innerHTML，需要单独处理
                         const imgElement = document.createElement('img');
                         imgElement.src = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
                         imgElement.alt = 'Generated Image';
@@ -345,7 +328,6 @@ async function handleStreamResponse(response, aiMessageElement, chatDisplay) {
                         imgElement.style.height = 'auto';
                         mediaAndFileElements.push(imgElement);
                     } else if (part.fileData) {
-                        // 处理外部文件 URI (大文件)
                         const mimeType = part.fileData.mimeType;
                         const uri = part.fileData.uri;
 
@@ -388,13 +370,10 @@ async function handleStreamResponse(response, aiMessageElement, chatDisplay) {
             }
         }
         
-        // 每次收到新内容时更新文本部分
         if (accumulatedTextContent) {
             textContainer.innerHTML = marked.parse(accumulatedTextContent);
         }
 
-        // 清除旧的媒体元素（除了文本容器），并重新添加所有媒体元素
-        // 这样做可以确保图片和文件链接在文本更新时能正确显示
         aiMessageElement.querySelectorAll('img, video, audio, .message-displayed-file').forEach(el => el.remove());
         mediaAndFileElements.forEach(el => aiMessageElement.appendChild(el));
         
@@ -404,7 +383,7 @@ async function handleStreamResponse(response, aiMessageElement, chatDisplay) {
 
 // 处理普通响应
 async function handleNormalResponse(parts, aiMessageElement, chatDisplay) {
-    aiMessageElement.innerHTML = ''; // 清空加载动画或之前的内容
+    aiMessageElement.innerHTML = '';
 
     if (Array.isArray(parts)) {
         let textContent = '';
@@ -418,7 +397,7 @@ async function handleNormalResponse(parts, aiMessageElement, chatDisplay) {
                 imgElement.style.maxWidth = '100%';
                 imgElement.style.height = 'auto';
                 aiMessageElement.appendChild(imgElement);
-            } else if (part.fileData) { // 处理 fileData
+            } else if (part.fileData) {
                 const mimeType = part.fileData.mimeType;
                 const uri = part.fileData.uri;
 
@@ -456,18 +435,15 @@ async function handleNormalResponse(parts, aiMessageElement, chatDisplay) {
                 }
             }
         });
-        // 将所有文本内容一次性用 marked 渲染，并添加到元素开头
         if (textContent) {
             const textDiv = document.createElement('div');
             textDiv.innerHTML = marked.parse(textContent);
-            aiMessageElement.prepend(textDiv); // 文本放在最前面
+            aiMessageElement.prepend(textDiv);
         }
     } else {
-        // 如果不是数组，假设是纯文本
         aiMessageElement.innerHTML = marked.parse(parts.toString());
     }
 
-    // 确保滚动到最新消息
     chatDisplay.scrollTop = chatDisplay.scrollHeight;
 }
 
