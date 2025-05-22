@@ -31,7 +31,11 @@ export async function handleChatRequest(req: Request, aiService: AIService): Pro
   // Example: Handle a POST request to /chat
   if (req.method === "POST") {
     try {
-      const { chatId, model, message } = await req.json(); // Destructure model and message
+      const formData = await req.formData();
+      const chatId = formData.get('chatId');
+      const model = formData.get('model');
+      const message = formData.get('input'); // Frontend sends text as 'input'
+      // Files are also in formData, but we'll handle them later if needed
 
       // If no chatId is provided, create a new chat
       let currentChatId = chatId;
@@ -53,6 +57,7 @@ export async function handleChatRequest(req: Request, aiService: AIService): Pro
       }));
 
       // Start chat with history and send the new message
+      // Note: The AI service needs to handle potential file parts if included in the future
       const chat = aiService.startChat({ model: model, history: aiHistory }); // Use startChat
       const result = await chat.sendMessage({ message: message }); // Send user message
       const aiResponseContent = result.text; // Get AI response text
