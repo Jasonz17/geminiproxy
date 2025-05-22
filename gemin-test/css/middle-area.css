@@ -2,7 +2,7 @@
 /* 整体布局相关的样式 */
 
 #middle-area {
-    flex: 1 1 auto;
+    flex: 1 1 auto; /* 让它弹性填充剩余空间 */
     display: flex;
     flex-direction: column;
     background-color: #ffffff; /* White background */
@@ -15,8 +15,9 @@
     transition: all 0.3s ease;
     min-width: 0; /* 确保flex item可以正确缩小 */
     overflow: hidden; /* 防止内容溢出 */
-    height: 100%; /* 确保占满容器高度 */
-    width: 100%; /* 确保占满可用宽度 */
+    /* 移除以下两行，让flex属性控制尺寸 */
+    /* height: 100%; */
+    /* width: 100%; */
 }
 
 /* 中间区域的基础布局 */
