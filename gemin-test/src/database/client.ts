@@ -17,7 +17,7 @@ export async function ensureTablesExist() {
         id SERIAL PRIMARY KEY,
         chat_id INTEGER NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
         role VARCHAR(50) NOT NULL,
-        content TEXT NOT NULL,
+        content JSONB NOT NULL, -- <<--- 关键：这里必须是 JSONB
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `);
