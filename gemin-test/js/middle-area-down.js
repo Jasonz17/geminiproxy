@@ -181,6 +181,21 @@ async function handleSendMessage(userInput, sendButton, filePreviewContainer, di
     
     // 只有当有文本或文件时才发送消息
     if (messageText || selectedFiles.length > 0) {
+        const modelSelect = document.getElementById('model-select');
+        const apiKey = modelSelect.getAttribute('data-apikey'); // 从model-select获取API密钥
+
+        // 增强 API Key 验证
+        if (!apiKey || apiKey.trim() === '') { // 检查 apiKey 是否为空或只包含空白字符
+            alert('请在设置中输入有效的API Key！');
+            // 清理加载动画，如果已经添加了
+            const loadingAnimation = chatDisplay.lastChild;
+            if (loadingAnimation && loadingAnimation.classList.contains('ai')) {
+                loadingAnimation.remove();
+            }
+            return; // 终止发送
+        }
+        // <<< 增强 API Key 验证 <<<
+
         // 显示用户消息和文件（如果文本或文件存在）
         // 传递一个包含文本和文件的对象给 displayMessage
         displayMessage({
@@ -189,24 +204,11 @@ async function handleSendMessage(userInput, sendButton, filePreviewContainer, di
             files: selectedFiles // 这里是File对象数组，displayMessage会处理
         }, chatDisplay);
 
-        const modelSelect = document.getElementById('model-select');
         const selectedModel = modelSelect.value;
-        const apiKey = modelSelect.getAttribute('data-apikey'); // 从model-select获取API密钥
-
-        // 验证API密钥
-        if (!apiKey) {
-            alert('请在设置中输入API Key！');
-            // 移除加载动画
-            const loadingAnimation = chatDisplay.lastChild;
-            if (loadingAnimation && loadingAnimation.classList.contains('ai')) {
-                loadingAnimation.remove();
-            }
-            return;
-        }
-
+        
         const formData = new FormData();
         formData.append('model', selectedModel);
-        formData.append('apikey', apiKey);
+        formData.append('apikey', apiKey); // 确保这里传递的是非空的 apiKey
         formData.append('input', messageText); // 用户输入的文本
         formData.append('stream', isStreamMode.toString());
         if (currentChatId) {
