@@ -1,5 +1,4 @@
 // src/routes/chat.route.ts
-// 请确保这个文件已经是上一个回答中修改后的最新版本
 
 import { ChatService } from "../services/chat.service.ts";
 import { processAIRequest, parseFormDataToContents } from "../services/ai.service.ts";
@@ -49,14 +48,14 @@ export async function handleChatRequest(req: Request): Promise<Response> {
       }
 
       // 解析用户当前输入（文本和文件）为 AI 模型所需的 content parts
-      const userContentParts = await parseFormDataToContents(formData, messageText);
+      // 传递 apikey 给 parseFormDataToContents 用于内部的文件上传服务初始化
+      const userContentParts = await parseFormDataToContents(formData, messageText, apikey);
       
       if (userContentParts.length === 0) {
         return new Response("没有提供文本或文件", { status: 400 });
       }
 
       // 将用户消息（包括文件部分）保存到数据库
-      // content 现在是 parts 数组，符合 Message['content'] 类型
       await chatService.addMessageToChat(currentChatId, "user", userContentParts);
       console.log(`用户消息已保存到数据库 (Chat ID: ${currentChatId}):`, userContentParts);
 
@@ -76,6 +75,11 @@ export async function handleChatRequest(req: Request): Promise<Response> {
       const responseModalities: Modality[] = [];
       if (model === 'gemini-2.0-flash-preview-image-generation') {
         responseModalities.push(Modality.TEXT, Modality.IMAGE);
+      }
+
+      // 调用 AI service 之前，再次检查 apikey 是否存在
+      if (!apikey) {
+        return new Response("API Key is missing for AI service call.", { status: 400 });
       }
 
       const aiResponse = await processAIRequest(model, apikey, fullAiContents, streamEnabled, responseModalities);
