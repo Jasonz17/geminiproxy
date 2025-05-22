@@ -295,11 +295,15 @@ async function handleSendMessage(userInput, sendButton, filePreviewContainer, di
 async function handleStreamResponse(response, aiMessageElement, chatDisplay) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-    let accumulatedContent = ''; // 累积文本内容，用于 marked 渲染
-    let imageParts = []; // 累积图片部分
+    let accumulatedTextContent = ''; // 累积文本内容，用于 marked 渲染
+    let mediaAndFileElements = []; // 累积图片、视频、音频和文件链接部分
 
     // 清空 aiMessageElement 的初始内容（如加载动画）
     aiMessageElement.innerHTML = '';
+
+    // 创建一个用于放置文本内容的 div
+    const textContainer = document.createElement('div');
+    aiMessageElement.appendChild(textContainer);
 
     while (true) {
         const {value, done} = await reader.read();
@@ -313,34 +317,69 @@ async function handleStreamResponse(response, aiMessageElement, chatDisplay) {
                 const parts = JSON.parse(line); // 每行是一个JSON数组
                 parts.forEach(part => {
                     if (part.text) {
-                        accumulatedContent += part.text;
+                        accumulatedTextContent += part.text;
                     } else if (part.inlineData) {
                         // 图像数据不能直接追加到 innerHTML，需要单独处理
-                        // 如果有图片，我们先累积起来，等待所有文本渲染完再处理
-                        imageParts.push(part);
+                        const imgElement = document.createElement('img');
+                        imgElement.src = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                        imgElement.alt = 'Generated Image';
+                        imgElement.style.maxWidth = '100%';
+                        imgElement.style.height = 'auto';
+                        mediaAndFileElements.push(imgElement);
+                    } else if (part.fileData) {
+                        // 处理外部文件 URI (大文件)
+                        const mimeType = part.fileData.mimeType;
+                        const uri = part.fileData.uri;
+
+                        if (mimeType.startsWith('image/')) {
+                            const imgElement = document.createElement('img');
+                            imgElement.src = uri;
+                            imgElement.alt = 'Uploaded Image';
+                            imgElement.style.maxWidth = '100%';
+                            imgElement.style.height = 'auto';
+                            mediaAndFileElements.push(imgElement);
+                        } else if (mimeType.startsWith('video/')) {
+                            const videoElement = document.createElement('video');
+                            videoElement.src = uri;
+                            videoElement.controls = true;
+                            videoElement.style.maxWidth = '100%';
+                            videoElement.style.height = 'auto';
+                            mediaAndFileElements.push(videoElement);
+                        } else if (mimeType.startsWith('audio/')) {
+                            const audioElement = document.createElement('audio');
+                            audioElement.src = uri;
+                            audioElement.controls = true;
+                            audioElement.style.maxWidth = '100%';
+                            mediaAndFileElements.push(audioElement);
+                        } else {
+                            const fileLinkDiv = document.createElement('div');
+                            fileLinkDiv.classList.add('message-displayed-file');
+                            const fileName = uri.substring(uri.lastIndexOf('/') + 1) || '文件';
+                            const cleanFileName = fileName.split('?')[0].split('#')[0];
+                            const fileIconSvg = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="file-icon">
+                                <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                                <polyline points="13 2 13 9 20 9"></polyline>
+                            </svg>`;
+                            fileLinkDiv.innerHTML = `${fileIconSvg} <a href="${uri}" target="_blank" rel="noopener noreferrer">${cleanFileName} (${mimeType})</a>`;
+                            mediaAndFileElements.push(fileLinkDiv);
+                        }
                     }
                 });
             } catch (e) {
-                console.error('解析流式响应JSON块时出错:', e);
+                console.error('Error parsing JSON chunk in stream:', e);
             }
         }
         
         // 每次收到新内容时更新文本部分
-        if (accumulatedContent) {
-            aiMessageElement.innerHTML = marked.parse(accumulatedContent);
+        if (accumulatedTextContent) {
+            textContainer.innerHTML = marked.parse(accumulatedTextContent);
         }
-        // 对于图片，如果 accumulateContent 发生变化，需要重新插入图片，否则图片会丢失
-        // 简单处理：每次更新时清除旧图片并重新添加
-        aiMessageElement.querySelectorAll('img').forEach(img => img.remove());
-        imageParts.forEach(part => {
-            const imgElement = document.createElement('img');
-            imgElement.src = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-            imgElement.style.maxWidth = '100%';
-            imgElement.style.height = 'auto';
-            aiMessageElement.appendChild(imgElement);
-        });
 
-        // 确保滚动到最新消息
+        // 清除旧的媒体元素（除了文本容器），并重新添加所有媒体元素
+        // 这样做可以确保图片和文件链接在文本更新时能正确显示
+        aiMessageElement.querySelectorAll('img, video, audio, .message-displayed-file').forEach(el => el.remove());
+        mediaAndFileElements.forEach(el => aiMessageElement.appendChild(el));
+        
         chatDisplay.scrollTop = chatDisplay.scrollHeight;
     }
 }
@@ -349,23 +388,62 @@ async function handleStreamResponse(response, aiMessageElement, chatDisplay) {
 async function handleNormalResponse(parts, aiMessageElement, chatDisplay) {
     aiMessageElement.innerHTML = ''; // 清空加载动画或之前的内容
 
-    // 假设 parts 是一个数组，包含 text 和 inlineData 部分
     if (Array.isArray(parts)) {
         let textContent = '';
         parts.forEach(part => {
             if (part.text) {
                 textContent += part.text;
             } else if (part.inlineData) {
-                // 如果有图片数据，直接创建并附加图片元素
                 const imgElement = document.createElement('img');
                 imgElement.src = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                imgElement.alt = 'Generated Image';
                 imgElement.style.maxWidth = '100%';
                 imgElement.style.height = 'auto';
                 aiMessageElement.appendChild(imgElement);
+            } else if (part.fileData) { // 处理 fileData
+                const mimeType = part.fileData.mimeType;
+                const uri = part.fileData.uri;
+
+                if (mimeType.startsWith('image/')) {
+                    const imgElement = document.createElement('img');
+                    imgElement.src = uri;
+                    imgElement.alt = 'Uploaded Image';
+                    imgElement.style.maxWidth = '100%';
+                    imgElement.style.height = 'auto';
+                    aiMessageElement.appendChild(imgElement);
+                } else if (mimeType.startsWith('video/')) {
+                    const videoElement = document.createElement('video');
+                    videoElement.src = uri;
+                    videoElement.controls = true;
+                    videoElement.style.maxWidth = '100%';
+                    videoElement.style.height = 'auto';
+                    aiMessageElement.appendChild(videoElement);
+                } else if (mimeType.startsWith('audio/')) {
+                    const audioElement = document.createElement('audio');
+                    audioElement.src = uri;
+                    audioElement.controls = true;
+                    audioElement.style.maxWidth = '100%';
+                    aiMessageElement.appendChild(audioElement);
+                } else {
+                    const fileLinkDiv = document.createElement('div');
+                    fileLinkDiv.classList.add('message-displayed-file');
+                    const fileName = uri.substring(uri.lastIndexOf('/') + 1) || '文件';
+                    const cleanFileName = fileName.split('?')[0].split('#')[0];
+                    const fileIconSvg = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="file-icon">
+                        <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                        <polyline points="13 2 13 9 20 9"></polyline>
+                    </svg>`;
+                    fileLinkDiv.innerHTML = `${fileIconSvg} <a href="${uri}" target="_blank" rel="noopener noreferrer">${cleanFileName} (${mimeType})</a>`;
+                    aiMessageElement.appendChild(fileLinkDiv);
+                }
             }
         });
-        // 将所有文本内容一次性用 marked 渲染
-        aiMessageElement.innerHTML = marked.parse(textContent) + aiMessageElement.innerHTML; // 文本在前，图片在后
+        // 将所有文本内容一次性用 marked 渲染，并添加到元素开头
+        if (textContent) {
+            const textDiv = document.createElement('div');
+            textDiv.innerHTML = marked.parse(textContent);
+            aiMessageElement.prepend(textDiv); // 文本放在最前面
+        }
     } else {
         // 如果不是数组，假设是纯文本
         aiMessageElement.innerHTML = marked.parse(parts.toString());
