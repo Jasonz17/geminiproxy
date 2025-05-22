@@ -1,15 +1,46 @@
 // src/services/ai.service.ts
 
-import { GoogleGenAI, Modality, GenerateContentResult, GenerateContentStreamResult, Part, Content } from "npm:@google/genai"; // 确保导入了类型
+import { GoogleGenAI, Modality, Part, FileMetadata, FileState } from "npm:@google/genai"; // 导入需要的类型
 import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
+
+// 辅助函数：轮询文件状态
+async function pollFileState(
+  ai: GoogleGenAI,
+  fileNameInApi: string, // 这是 files.upload 返回的 file.name，例如 "files/xxxx"
+  maxRetries = 10,
+  delayMs = 5000 // 5秒轮询一次
+): Promise<FileMetadata> {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      console.log(`轮询文件状态 (${i + 1}/${maxRetries}): ${fileNameInApi}`);
+      const fileMeta = await ai.files.get({ name: fileNameInApi }); // 使用 get 方法获取最新状态
+
+      if (fileMeta.state === FileState.ACTIVE) {
+        console.log(`文件 ${fileNameInApi} 状态已变为 ACTIVE. URI: ${fileMeta.uri}`);
+        return fileMeta;
+      } else if (fileMeta.state === FileState.FAILED) {
+        console.error(`文件 ${fileNameInApi} 处理失败:`, fileMeta.error || "未知错误");
+        throw new Error(`文件 ${fileNameInApi} 处理失败: ${fileMeta.error?.message || "未知错误"}`);
+      }
+      // 如果是 PROCESSING 或其他非最终状态，则等待后重试
+      console.log(`文件 ${fileNameInApi} 当前状态: ${fileMeta.state}, 等待 ${delayMs / 1000} 秒后重试...`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+
+    } catch (error) {
+      // files.get 也可能失败
+      console.error(`轮询文件 ${fileNameInApi} 状态时发生错误:`, error);
+      if (i === maxRetries - 1) { // 最后一次尝试失败则抛出
+          throw error;
+      }
+      await new Promise(resolve => setTimeout(resolve, delayMs)); // 等待后重试
+    }
+  }
+  throw new Error(`文件 ${fileNameInApi} 在 ${maxRetries} 次尝试后仍未变为 ACTIVE 状态。`);
+}
+
 
 /**
  * Parses FormData to extract text input and file content for AI model.
- * Handles base64 encoding for smaller files and uploads/references for larger ones.
- * @param formData The FormData object from the request.
- * @param inputText The main text input from the user.
- * @param apikey The API key to initialize GoogleGenAI for file uploads.
- * @returns An array of content parts suitable for the Gemini API.
  */
 export async function parseFormDataToContents(formData: FormData, inputText: string, apikey: string): Promise<Array<Part>> {
   const contents: Array<Part> = [];
@@ -41,25 +72,60 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
     try {
       if (shouldUseFileAPI) {
         console.log(`正在通过 File API 上传文件: ${file.name}, 类型: ${file.type}, 大小: ${(file.size / (1024 * 1024)).toFixed(2)}MB`);
-        const uploadResult = await aiForFiles.files.upload({
+        
+        // files.upload() 返回的是 UploadFileResponse，但我们实际观察到它直接返回了 FileMetadata 结构
+        // 为了代码健壮性，我们先假设它可能返回 UploadFileResponse，再检查直接属性
+        // deno-lint-ignore no-explicit-any
+        const uploadResponse: any = await aiForFiles.files.upload({
           file: file,
           config: {
             mimeType: file.type,
             displayName: file.name,
           }
         });
-        if (!uploadResult.file || !uploadResult.file.uri) {
-          console.error("File upload result did not contain expected file URI:", uploadResult);
-          throw new Error(`文件上传成功但未返回有效的URI: ${file.name}`);
+
+        // 从 uploadResponse 中提取 FileMetadata
+        // SDK 定义是 uploadResponse.file，但日志显示 uploadResponse 直接就是 FileMetadata
+        const initialFileMeta: FileMetadata = uploadResponse.file || uploadResponse;
+
+        if (!initialFileMeta || !initialFileMeta.uri || !initialFileMeta.name) {
+          console.error("File upload did not return expected metadata (uri or name):", initialFileMeta);
+          throw new Error(`文件上传后未返回有效的元数据 (uri 或 name): ${file.name}`);
         }
-        console.log(`文件上传完成 ${file.name}, URI: ${uploadResult.file.uri}`);
+        console.log(`文件上传初始响应 for ${file.name}: Name: ${initialFileMeta.name}, URI: ${initialFileMeta.uri}, State: ${initialFileMeta.state}`);
+
+        let activeFileMeta: FileMetadata;
+        if (initialFileMeta.state === FileState.PROCESSING) {
+          console.log(`文件 ${initialFileMeta.name} 正在处理中，开始轮询状态...`);
+          activeFileMeta = await pollFileState(aiForFiles, initialFileMeta.name);
+        } else if (initialFileMeta.state === FileState.ACTIVE) {
+          console.log(`文件 ${initialFileMeta.name} 上传后状态即为 ACTIVE.`);
+          activeFileMeta = initialFileMeta;
+        } else if (initialFileMeta.state === FileState.FAILED) {
+            console.error(`文件 ${initialFileMeta.name} 上传后即为 FAILED 状态:`, initialFileMeta.error);
+            throw new Error(`文件 ${initialFileMeta.name} 上传失败: ${initialFileMeta.error?.message || "未知上传错误"}`);
+        }
+         else {
+          // 对于UNSPECIFIED或其他未知状态，也尝试轮询，或者直接报错
+          console.warn(`文件 ${initialFileMeta.name} 状态未知 (${initialFileMeta.state}), 尝试轮询...`);
+          activeFileMeta = await pollFileState(aiForFiles, initialFileMeta.name);
+        }
+        
+        // 确保 activeFileMeta 存在且 URI 有效
+        if (!activeFileMeta || !activeFileMeta.uri) {
+             console.error("Failed to get active file metadata or URI is missing after polling for file:", file.name, activeFileMeta);
+             throw new Error(`轮询后未能获取活动文件元数据或URI丢失: ${file.name}`);
+        }
+
+
         contents.push({
           fileData: {
-            mimeType: file.type,
-            uri: uploadResult.file.uri,
+            mimeType: activeFileMeta.mimeType, // 使用从元数据获取的MIME类型
+            uri: activeFileMeta.uri,
           },
         });
-      } else {
+
+      } else { // Base64 编码逻辑保持不变
         console.log(`正在进行 Base64 编码: ${file.name}, 类型: ${file.type}, 大小: ${(file.size / (1024 * 1024)).toFixed(2)}MB`);
         const fileBuffer = await file.arrayBuffer();
         const base64Data = encodeBase64(new Uint8Array(fileBuffer));
@@ -71,6 +137,7 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
         });
       }
     } catch (fileProcessError) {
+      // ... (错误处理逻辑保持不变) ...
       console.error(`处理文件 ${file.name} 时出错:`, fileProcessError);
       let detailedMessage = `处理文件失败: ${file.name}`;
       if (fileProcessError instanceof Error) {
@@ -106,14 +173,12 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
   return contents;
 }
 
-/**
- * Processes an AI request by interacting with the Google Gemini API.
- * This function handles both streamed and non-streamed responses.
- */
+// processAIRequest 函数保持不变 (使用上一版本给出的)
+// ... (processAIRequest 函数的完整代码，如上一条回复所示) ...
 export async function processAIRequest(
   model: string,
   apikey: string,
-  contents: Content[], // 明确类型为 Content[]
+  contents: Content[],
   streamEnabled: boolean,
   responseModalities: Modality[] = []
 ): Promise<ReadableStream<Uint8Array> | Array<Part>> {
@@ -161,9 +226,7 @@ export async function processAIRequest(
           }
         }
       });
-    } else { // 非流式
-      // 注意：这里的 result 类型是 GenerateContentResponse，但为了简单起见，我们直接用 any，然后检查其结构
-      // SDK 更新后，GenerateContentResult 可能直接就是 GenerateContentResponse 的内容
+    } else { 
       // deno-lint-ignore no-explicit-any
       const result: any = await aiForGenerate.models.generateContent({
         model: model,
@@ -171,12 +234,9 @@ export async function processAIRequest(
         generationConfig: generationConfig,
       });
       
-      // --- 关键修正点 ---
-      // 直接从 result 访问 candidates，因为日志显示 result.response 是 undefined
       if (result && result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts) {
-        return result.candidates[0].content.parts; // 返回 Part[]
+        return result.candidates[0].content.parts;
       } else {
-        // 如果上面的条件不满足，记录详细的 result 结构
         console.error("AI服务返回了意外的结构 (non-stream). 实际响应内容 (result):", JSON.stringify(result, null, 2));
         throw new Error("AI服务返回了意外的结构 (non-stream)");
       }
