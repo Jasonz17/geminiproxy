@@ -2,17 +2,16 @@
 
 import {
   GoogleGenAI,
-  Modality,
+  Modality, // 保留 Modality 以便未来可能使用或参考
   Part,
   FileMetadata,
   FileState,
   Content,
-  GenerateContentResult,
-  GenerateContentStreamResult
+  GenerateContentRequest // 导入这个类型
 } from "npm:@google/genai";
 import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 
-// 辅助函数：轮询文件状态
+// pollFileState 和 fetchImageFromUrl 函数保持不变 (来自上一个回复)
 async function pollFileState(
   ai: GoogleGenAI,
   fileNameInApi: string,
@@ -66,6 +65,7 @@ async function fetchImageFromUrl(imageUrl: string): Promise<{ data: Uint8Array; 
     return null;
   }
 }
+
 
 export async function parseFormDataToContents(formData: FormData, inputText: string, apikey: string): Promise<Array<Part>> {
   const partsAccumulator: Array<Part> = [];
@@ -169,13 +169,11 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
       let detailedMessage = `处理文件失败: ${file.name}`;
       if (fileProcessError instanceof Error) {
           detailedMessage += ` - ${fileProcessError.message}`;
-          // deno-lint-ignore no-explicit-any
           const googleError = fileProcessError as any;
           if (googleError.error && googleError.error.message) detailedMessage += ` (Google API Error: ${googleError.error.message})`;
           else if (googleError.message?.includes("fetch")) detailedMessage += ` (可能是网络或API Key权限问题)`;
           else if (googleError.message?.includes("User location is not supported")) detailedMessage += ` (Google API 错误: 用户地理位置不支持此操作)`;
       } else if (typeof fileProcessError === 'object' && fileProcessError !== null) {
-          // deno-lint-ignore no-explicit-any
           const errorObj = fileProcessError as any;
           if (errorObj.error && errorObj.error.message) detailedMessage += ` - Google API 错误: ${errorObj.error.message}`;
           else try { detailedMessage += ` - 错误详情: ${JSON.stringify(fileProcessError)}`; } catch (e) { detailedMessage += ` - (无法序列化错误对象)`; }
@@ -183,7 +181,7 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
           detailedMessage += ` - 未知错误类型`;
       }
       console.error(`完整错误对象详情 (fileProcessError in parseFormDataToContents for ${file.name}):`, JSON.stringify(fileProcessError, Object.getOwnPropertyNames(fileProcessError), 2));
-      partsAccumulator.push({ text: `[文件处理失败: ${file.name} - ${detailedMessage.substring(0, 200)}]` }); // 限制错误消息长度
+      partsAccumulator.push({ text: `[文件处理失败: ${file.name} - ${detailedMessage.substring(0, 200)}]` });
     }
   }
 
@@ -197,18 +195,19 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
   return partsAccumulator;
 }
 
+
 export async function processAIRequest(
-  model: string,
+  modelName: string, // Renamed to modelName to avoid conflict
   apikey: string,
-  contentsArg: Content[],
+  historyContents: Content[], // Full conversation history including the latest user message
   streamEnabled: boolean,
-  responseMimeTypes: string[] = [] // 接收 string[]
+  responseMimeTypes: string[] = []
 ): Promise<ReadableStream<Uint8Array> | Array<Part>> {
   if (!apikey) {
     throw new Error("API Key is missing.");
   }
-  if (!contentsArg || contentsArg.length === 0 || contentsArg.every(contentItem => !contentItem.parts || contentItem.parts.length === 0)) {
-     throw new Error("No content provided to AI model for processing (processAIRequest).");
+  if (!historyContents || historyContents.length === 0) {
+     throw new Error("No history/content provided to AI model for processing (processAIRequest).");
   }
 
   const aiForGenerate = new GoogleGenAI({ apiKey: apikey });
@@ -216,23 +215,73 @@ export async function processAIRequest(
   // deno-lint-ignore no-explicit-any
   const generationConfig: any = {};
   if (responseMimeTypes.length > 0) {
-    generationConfig.responseMimeTypes = responseMimeTypes; // 直接使用 string[]
+    generationConfig.responseMimeTypes = responseMimeTypes;
     console.log(`在 processAIRequest 中设置 generationConfig.responseMimeTypes:`, responseMimeTypes);
   }
 
+  // *** 核心修改：构建 generateContent 的请求体 ***
+  let requestForGenerateContent: GenerateContentRequest;
+
+  if (modelName === 'gemini-2.0-flash-preview-image-generation') {
+    // 对于图像生成，通常只需要当前的文本提示。
+    // 从 historyContents 中提取最后一个（即当前）用户消息的 parts。
+    // 假设 historyContents 至少有一条，并且最后一条是用户消息。
+    const currentUserContent = historyContents[historyContents.length - 1];
+    if (!currentUserContent || currentUserContent.role !== 'user' || !currentUserContent.parts || currentUserContent.parts.length === 0) {
+      throw new Error("图像生成需要一个有效的当前用户文本提示。");
+    }
+
+    // 如果当前用户消息包含文本和输入图片（用于图片编辑），则使用这些 parts
+    // 如果只包含文本（用于文生图），也使用这些 parts
+    const aktuellenParts = currentUserContent.parts;
+    console.log(`图像生成模型 (${modelName}) 使用的 parts:`, JSON.stringify(aktuellenParts));
+
+    requestForGenerateContent = {
+      // contents 在这种情况下可以是 Part[] (如果SDK支持，会自动包装成 user role)
+      // 或者是一个只包含当前用户输入的 Content[]
+      // 为了保险，我们构造成 Content[]
+      contents: [{ role: 'user', parts: aktuellenParts }], // 只发送当前用户的输入 parts
+      generationConfig: generationConfig,
+      // tools: undefined, // 如果不需要 function calling
+      // safetySettings: undefined, // 如果不需要自定义安全设置
+      // systemInstruction: undefined, // 如果模型支持且需要系统指令
+    };
+    // 注意：如果图像生成模型也需要历史上下文，那么应该继续使用完整的 historyContents。
+    // 但通常“文生图”或“图+文生图”更多是基于当前输入。
+    // 如果需要历史，则 requestForGenerateContent.contents = historyContents;
+
+  } else {
+    // 对于其他模型，使用完整的对话历史
+    requestForGenerateContent = {
+      contents: historyContents,
+      generationConfig: generationConfig,
+    };
+  }
+  console.log(`最终发送给 ${modelName} 的请求结构:`, JSON.stringify(requestForGenerateContent, null, 2));
+  // *** 修改结束 ***
+
+
   try {
     if (streamEnabled) {
-      const streamResult: GenerateContentStreamResult = await aiForGenerate.models.generateContentStream({
-        model: model,
-        contents: contentsArg,
-        generationConfig: generationConfig,
-      });
+      // 对于流式，请求结构通常与非流式相同
+      const streamResult = await aiForGenerate.getModel({ model: modelName }).generateContentStream(requestForGenerateContent);
+      // 或者: const streamResult = await aiForGenerate.models.generateContentStream({ model: modelName, ...requestForGenerateContent });
+      // SDK 的 getModel().generateContentStream() 和 models.generateContentStream() 接受的参数结构可能略有不同。
+      // GenerateContentStreamRequest 也是 GenerateContentRequest
+      // 所以直接传递 requestForGenerateContent 应该是可以的。
+      // 如果不行，则需要拆分：
+      // const streamResult = await aiForGenerate.getModel({ model: modelName })
+      //   .generateContentStream({ contents: requestForGenerateContent.contents, generationConfig: requestForGenerateContent.generationConfig });
+      // 为了保险，我们用更明确的方式，确保 modelName 是在 getModel 时指定的：
+      const generativeModel = aiForGenerate.getModel({ model: modelName, generationConfig }); // 将generationConfig也在此处设置
+      const streamResult = await generativeModel.generateContentStream({ contents: requestForGenerateContent.contents });
+
 
       const encoder = new TextEncoder();
       return new ReadableStream({
         async start(controller) {
           try {
-            for await (const chunk of streamResult.stream) {
+            for await (const chunk of streamResult.stream) { // 确保访问 .stream
               if (chunk.candidates && chunk.candidates.length > 0 && chunk.candidates[0].content && chunk.candidates[0].content.parts) {
                 controller.enqueue(encoder.encode(JSON.stringify(chunk.candidates[0].content.parts) + '\n'));
               } else if (chunk.candidates && chunk.candidates.length > 0 && chunk.candidates[0].finishReason) {
@@ -251,27 +300,33 @@ export async function processAIRequest(
       });
     } else {
       // deno-lint-ignore no-explicit-any
-      const result: any = await aiForGenerate.models.generateContent({ // 类型改为 GenerateContentResult
-        model: model,
-        contents: contentsArg,
-        generationConfig: generationConfig,
-      });
+      // const result: any = await aiForGenerate.models.generateContent({model: modelName, ...requestForGenerateContent});
+      // 与流式调用方式统一：
+      const generativeModel = aiForGenerate.getModel({ model: modelName, generationConfig });
+      const result = await generativeModel.generateContent({ contents: requestForGenerateContent.contents });
 
-      if (result && result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts) {
-        return result.candidates[0].content.parts;
+
+      // 非流式响应现在是 GenerateContentResult，其响应在 .response 属性下
+      if (result.response && result.response.candidates && result.response.candidates.length > 0 && result.response.candidates[0].content && result.response.candidates[0].content.parts) {
+        return result.response.candidates[0].content.parts;
       } else {
-        console.error("AI服务返回了意外的结构 (non-stream). 实际响应内容 (result):", JSON.stringify(result, null, 2));
-        if (result && result.promptFeedback) {
-            console.error("Prompt Feedback (non-stream):", JSON.stringify(result.promptFeedback, null, 2));
-            const blockReason = result.promptFeedback.blockReason;
+        console.error("AI服务返回了意外的结构 (non-stream). 实际响应 (result.response):", JSON.stringify(result.response, null, 2));
+        if (result.response && result.response.promptFeedback) {
+            console.error("Prompt Feedback (non-stream):", JSON.stringify(result.response.promptFeedback, null, 2));
+            const blockReason = result.response.promptFeedback.blockReason;
             if (blockReason) {
-                throw new Error(`请求可能因安全或其他策略被阻止 (non-stream): ${blockReason}.详情: ${JSON.stringify(result.promptFeedback.safetyRatings)}`);
+                throw new Error(`请求可能因安全或其他策略被阻止 (non-stream): ${blockReason}.详情: ${JSON.stringify(result.response.promptFeedback.safetyRatings)}`);
             }
+        }
+        // 如果 result.response 本身不存在
+        if (!result.response) {
+            console.error("AI服务返回的 result 对象中缺少 response 属性. 完整 result:", JSON.stringify(result, null, 2));
         }
         throw new Error("AI服务返回了意外的结构 (non-stream)");
       }
     }
   } catch (error) {
+    // ... (错误处理和日志记录逻辑保持不变) ...
     console.error("Error generating content from AI model:", error);
     let detailedMessage = `AI模型生成内容错误`;
     if (error instanceof Error) {
