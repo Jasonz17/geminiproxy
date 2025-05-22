@@ -8,9 +8,10 @@ import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
  * Handles base64 encoding for smaller files and uploads/references for larger ones.
  * @param formData The FormData object from the request.
  * @param inputText The main text input from the user.
+ * @param apikey The API key to initialize GoogleGenAI for file uploads.
  * @returns An array of content parts suitable for the Gemini API.
  */
-export async function parseFormDataToContents(formData: FormData, inputText: string): Promise<Array<any>> {
+export async function parseFormDataToContents(formData: FormData, inputText: string, apikey: string): Promise<Array<any>> {
   const contents = [];
 
   // Handle text input
@@ -20,16 +21,15 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
 
   // Handle files
   const fileEntries = Array.from(formData.entries()).filter(([key, value]) => value instanceof File);
-  // 为每个请求创建一个新的 GoogleGenAI 实例，以确保 API 密钥正确应用
-  // 或者确保在外面传入一个已初始化的 ai 实例
-  // 这里暂时这样处理，但更好的做法是将 ai 实例作为参数传入
-  const apikey = formData.get('apikey')?.toString();
+
+  // Ensure API key is available for file uploads if needed
   if (!apikey) {
-    console.error("API Key not found in formData for file upload.");
+    console.error("API Key not provided for file upload service.");
     throw new Error("API Key is required for file uploads.");
   }
-  const ai = new GoogleGenAI({ apiKey: apikey });
 
+  // >>> 关键修改：获取专门用于文件上传的服务实例 <<<
+  const fileService = new GoogleGenAI({ apiKey: apikey }).getGenerativeMediaFileService(); 
 
   for (const [key, file] of fileEntries) {
     if (file instanceof File) {
@@ -50,7 +50,8 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
         } else {
           // 大于 20MB，使用 Google GenAI 的文件上传 API
           console.log(`正在上传大文件: ${file.name}, 大小: ${file.size / (1024 * 1024)}MB`);
-          const uploadResult = await ai.uploadFile(file, { // <-- 关键：重新启用此调用
+          // >>> 关键修改：使用 fileService 实例调用 uploadFile <<<
+          const uploadResult = await fileService.uploadFile(file, { 
             mimeType: file.type,
             displayName: file.name,
           });
@@ -59,13 +60,12 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
           contents.push({
             fileData: {
               mimeType: file.type,
-              uri: uploadResult.file.uri, // 这就是 URI
+              uri: uploadResult.file.uri,
             },
           });
         }
       } catch (fileProcessError) {
         console.error(`处理文件 ${file.name} 时出错:`, fileProcessError);
-        // 如果错误对象有其他属性，也可以尝试打印
         if (fileProcessError instanceof Error) {
             console.error(`错误详情: ${fileProcessError.message}`);
             if (fileProcessError.stack) {
@@ -73,8 +73,6 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
             }
         }
         console.error(`完整错误对象:`, JSON.stringify(fileProcessError, Object.getOwnPropertyNames(fileProcessError), 2));
-        // 对于文件处理错误，可以选择跳过该文件或者抛出错误中断请求
-        // 这里选择抛出错误，因为文件处理失败可能导致 AI 响应不完整
         throw new Error(`处理文件失败: ${file.name} - ${fileProcessError.message}`);
       }
     }
@@ -107,11 +105,11 @@ export async function processAIRequest(
     throw new Error("No content provided to AI model for processing.");
   }
 
-  const ai = new GoogleGenAI({ apiKey: apikey }); // 这里的ai实例用于generateContent
+  const ai = new GoogleGenAI({ apiKey: apikey }); // 这里的ai实例用于generateContent，这是正确的
 
   const generationConfig: any = {};
   if (responseModalities.length > 0) {
-    generationConfig.responseMimeTypes = responseModalities;
+    generationConfig.responseMimeTypes = responseModalities; // Correct usage for responseModalities in generationConfig
   }
 
   if (streamEnabled) {
