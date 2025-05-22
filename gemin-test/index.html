@@ -64,4 +64,50 @@
                             <p>支持输入类型: <span id="input-types" class="value">占位</span></p>
                             <p>支持输出类型: <span id="output-types" class="value">占位</span></p>
                         </div>
-                    </di
+                    </div>
+
+
+                </section>            </aside>
+
+            <!-- Middle Area (Chat Display & Input) -->
+            <section id="middle-area">
+                <!-- 上部聊天显示区域 -->
+                <section id="middle-area-up">
+                    <div id="chat-display">
+                        <!-- Chat messages will be displayed here -->
+                    </div>
+                </section>
+
+                <!-- 下部输入区域 -->
+                <section id="middle-area-down">
+                    <div id="input-container">
+                        <div class="input-wrapper">
+                            <textarea id="user-input" placeholder="输入..." rows="2"></textarea>
+                            <div class="input-toolbar">
+                                <div class="toolbar-left">
+                                </div>
+                                <div class="toolbar-right">
+                                    <button class="toolbar-icon stream-toggle" title="流式响应">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M6 6 C 16 6, 16 12, 8 12 S 16 18, 6 18"></path>
+                                        </svg>
+                                        <span class="tooltip">流式输出开关</span>
+                                    </button>
+                                    <button class="toolbar-icon send-button" title="发送">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </section>
+        </main>
+    </div>
+
+    <script type="module" src="js/script.js"></script>
+</body>
+</html>
