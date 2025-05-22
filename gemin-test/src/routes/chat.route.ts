@@ -4,7 +4,7 @@ import { ChatService } from "../services/chat.service.ts";
 import { processAIRequest, parseFormDataToContents } from "../services/ai.service.ts";
 import { Client } from "jsr:@db/postgres";
 import { Message } from "../database/models/message.ts";
-import { Content, Part } from "npm:@google/genai"; // Modality 不再需要
+import { Content, Part } from "npm:@google/genai";
 
 let dbClient: Client | null = null;
 const decoder = new TextDecoder();
@@ -66,15 +66,14 @@ export async function handleChatRequest(req: Request): Promise<Response> {
           fullAiContents.push({ role: role, parts: parts });
       }
 
-      // *** 核心修正：不再为图像生成模型传递 responseMimeTypes 给 processAIRequest ***
-      // processAIRequest 内部会根据模型名称自行处理图像生成的配置
       let mimeTypesForOtherModels: string[] = []; 
       if (model !== 'gemini-2.0-flash-preview-image-generation') {
         // 如果有其他模型需要特定MIME类型，可以在这里设置
-        // 例如： if (model === 'some-other-model-expecting-json') mimeTypesForOtherModels = ["application/json"];
         console.log(`模型 ${model} 使用默认响应类型或由 processAIRequest 内部的 _requestedResponseMimeTypes (如果提供) 决定。`);
+      } else {
+        // 对于图像生成模型，processAIRequest 内部会处理其特殊的 config.responseModalities
+        console.log(`为图像生成模型 ${model} 调用 processAIRequest，不在此处传递特定MIME类型列表。`);
       }
-      // *** 修正结束 ***
 
       if (!apikey) {
         return new Response("API Key is missing for AI service call.", { status: 400 });
@@ -85,9 +84,7 @@ export async function handleChatRequest(req: Request): Promise<Response> {
         apikey,
         fullAiContents,
         streamEnabled,
-        // 对于图像生成，processAIRequest 内部会处理 config.responseModalities
-        // 对于其他模型，如果需要，这里传递的数组会被用于 generationConfig.responseMimeTypes
-        mimeTypesForOtherModels
+        mimeTypesForOtherModels // 这个参数对于图像生成模型会被 processAIRequest 内部逻辑覆盖或忽略
       );
       
       // ... (后续的流式和非流式响应处理逻辑保持不变) ...
