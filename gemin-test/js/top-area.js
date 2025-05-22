@@ -5,8 +5,13 @@ export function initializeTopArea() {
     const saveApiKeyButton = document.getElementById('save-api-key');
     const modelSelect = document.getElementById('model-select');
 
+    // 确保元素存在才进行操作，避免null错误
+    if (!apiKeyInput || !saveApiKeyButton || !modelSelect) {
+        console.error("Top area elements not found, skipping initialization.");
+        return;
+    }
 
-    // Load API key from localStorage on page load (Temporary, replace with IndexedDB)
+    // Load API key from localStorage on page load
     const savedApiKey = localStorage.getItem('apiKey');
     if (savedApiKey) {
         apiKeyInput.value = savedApiKey;
@@ -20,10 +25,10 @@ export function initializeTopArea() {
 
     saveApiKeyButton.addEventListener('click', () => {
         if (saveApiKeyButton.textContent === '保存') {
-            const apiKey = apiKeyInput.value;
+            const apiKey = apiKeyInput.value.trim(); // Trim whitespace
             if (apiKey) {
                 console.log('API Key saved:', apiKey);
-                localStorage.setItem('apiKey', apiKey); // Temporary save to localStorage
+                localStorage.setItem('apiKey', apiKey);
                 modelSelect.setAttribute('data-apikey', apiKey); // 将API密钥保存到model-select元素
                 saveApiKeyButton.textContent = '修改';
                 apiKeyInput.style.display = 'none'; // Hide input after saving
@@ -32,12 +37,11 @@ export function initializeTopArea() {
             }
         } else { // Current text is '修改'
             saveApiKeyButton.textContent = '保存';
-            apiKeyInput.value = localStorage.getItem('apiKey'); // Pre-fill the input with the saved key
+            apiKeyInput.value = localStorage.getItem('apiKey') || ''; // Pre-fill with saved key, or empty string
             apiKeyInput.style.display = ''; // Show input when modifying
+            apiKeyInput.focus(); // 自动聚焦方便修改
         }
     });
-
-
 
     // TODO: Implement IndexedDB saving and loading
 }
