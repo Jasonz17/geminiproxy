@@ -197,7 +197,7 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
 
 
 // src/services/ai.service.ts
-// ... (其他部分，包括 pollFileState, fetchImageFromUrl, parseFormDataToContents 保持不变) ...
+// ... (pollFileState, fetchImageFromUrl, parseFormDataToContents 保持不变) ...
 
 export async function processAIRequest(
   modelName: string,
@@ -215,13 +215,13 @@ export async function processAIRequest(
 
   const aiForGenerate = new GoogleGenAI({ apiKey: apikey });
 
-  const generationConfig: any = {};
+  const generationConfig: any = {}; // Deno-lint-ignore for any
   if (responseMimeTypes.length > 0) {
     generationConfig.responseMimeTypes = responseMimeTypes;
     console.log(`在 processAIRequest 中设置 generationConfig.responseMimeTypes:`, responseMimeTypes);
   }
 
-  let requestForGenerateContent: GenerateContentRequest;
+  let finalContentsForAPI: Content[];
 
   if (modelName === 'gemini-2.0-flash-preview-image-generation') {
     const currentUserContent = historyContents[historyContents.length - 1];
@@ -230,31 +230,30 @@ export async function processAIRequest(
     }
     const aktuellenParts = currentUserContent.parts;
     console.log(`图像生成模型 (${modelName}) 使用的 parts:`, JSON.stringify(aktuellenParts));
-    requestForGenerateContent = {
-      contents: [{ role: 'user', parts: aktuellenParts }],
-      // generationConfig: generationConfig, // generationConfig 会在 getModel 时传入
-    };
-    // 如果图像生成模型也需要历史上下文，则:
-    // requestForGenerateContent.contents = historyContents;
+    // 对于图像生成，API 通常期望 'contents' 是一个只包含当前用户输入的 Content 数组
+    finalContentsForAPI = [{ role: 'user', parts: aktuellenParts }];
+    // 如果需要包含上下文历史 для图像生成：
+    // finalContentsForAPI = historyContents;
   } else {
-    requestForGenerateContent = {
-      contents: historyContents,
-      // generationConfig: generationConfig, // generationConfig 会在 getModel 时传入
-    };
+    finalContentsForAPI = historyContents;
   }
-  console.log(`最终发送给 ${modelName} 的请求的 contents 部分:`, JSON.stringify(requestForGenerateContent.contents, null, 2));
+  console.log(`最终发送给 ${modelName} 的 contents 部分:`, JSON.stringify(finalContentsForAPI, null, 2));
+
+  // 构建完整的请求对象
+  constapiRequest: GenerateContentRequest = {
+    contents: finalContentsForAPI,
+    generationConfig: generationConfig,
+    // model: modelName, // model 通常在方法调用时指定，而不是在请求对象内部
+  };
 
 
   try {
-    const generativeModel = aiForGenerate.getModel({ model: modelName, generationConfig }); // 将generationConfig在此处设置
-
     if (streamEnabled) {
-      // *** 修正点：移除这里的 const 声明，因为 streamResult 已经在外部声明（如果需要）
-      // 或者更好的方式是，将 streamResult 的声明和赋值都放在这个 if 块内部
-      // *** 我们选择后者，让 streamResult 的作用域仅限于此 if 块 ***
-      const streamResult = await generativeModel.generateContentStream({ contents: requestForGenerateContent.contents });
-      // const streamResult = await generativeModel.generateContentStream(requestForGenerateContent); // 也可以这样，如果 GenerateContentRequest 兼容
-
+      // *** 关键修正：直接调用 aiForGenerate.models.generateContentStream ***
+      const streamResult = await aiForGenerate.models.generateContentStream({
+        model: modelName, // 将 model 名称作为顶层参数传递
+        ...apiRequest // 展开其他请求参数
+      });
 
       const encoder = new TextEncoder();
       return new ReadableStream({
@@ -278,9 +277,13 @@ export async function processAIRequest(
         }
       });
     } else { // 非流式
-      const result = await generativeModel.generateContent({ contents: requestForGenerateContent.contents });
-      // const result = await generativeModel.generateContent(requestForGenerateContent); // 也可以这样
+      // *** 关键修正：直接调用 aiForGenerate.models.generateContent ***
+      const result = await aiForGenerate.models.generateContent({
+        model: modelName, // 将 model 名称作为顶层参数传递
+        ...apiRequest // 展开其他请求参数
+      });
 
+      // 非流式响应现在是 GenerateContentResult，其响应在 .response 属性下
       if (result.response && result.response.candidates && result.response.candidates.length > 0 && result.response.candidates[0].content && result.response.candidates[0].content.parts) {
         return result.response.candidates[0].content.parts;
       } else {
