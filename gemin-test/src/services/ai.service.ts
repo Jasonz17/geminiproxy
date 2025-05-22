@@ -1,6 +1,7 @@
 // src/services/ai.service.ts
 
-import { GoogleGenAI, Modality } from "npm:@google/genai";
+// 修正 import 路径和类名
+import { GoogleGenerativeAI, Modality } from "npm:@google/genai"; // Corrected to @google/genai and GoogleGenerativeAI
 import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 
 /**
@@ -8,7 +9,7 @@ import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
  * Handles base64 encoding for smaller files and uploads/references for larger ones.
  * @param formData The FormData object from the request.
  * @param inputText The main text input from the user.
- * @param apikey The API key to initialize GoogleGenAI for file uploads.
+ * @param apikey The API key to initialize GoogleGenerativeAI for file uploads.
  * @returns An array of content parts suitable for the Gemini API.
  */
 export async function parseFormDataToContents(formData: FormData, inputText: string, apikey: string): Promise<Array<any>> {
@@ -28,8 +29,9 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
     throw new Error("API Key is required for file uploads.");
   }
 
-  // >>> 关键修改：获取专门用于文件上传的服务实例 <<<
-  const fileService = new GoogleGenAI({ apiKey: apikey }).getGenerativeMediaFileService(); 
+  // >>> 关键修改：使用正确的类名 GoogleGenerativeAI 并且构造函数参数是直接的 apiKey 字符串 <<<
+  const aiForFiles = new GoogleGenerativeAI({ apiKey: apikey }); // Use the object literal for consistency as the constructor allows this too.
+  const fileService = aiForFiles.files; // Correctly access the 'files' service
 
   for (const [key, file] of fileEntries) {
     if (file instanceof File) {
@@ -105,7 +107,8 @@ export async function processAIRequest(
     throw new Error("No content provided to AI model for processing.");
   }
 
-  const ai = new GoogleGenAI({ apiKey: apikey }); // 这里的ai实例用于generateContent
+  // >>> 关键修改：使用正确的类名 GoogleGenerativeAI <<<
+  const ai = new GoogleGenerativeAI({ apiKey: apikey }); // 这里的ai实例用于generateContent
 
   const generationConfig: any = {};
   if (responseModalities.length > 0) {
