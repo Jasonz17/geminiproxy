@@ -1,19 +1,19 @@
 // src/services/ai.service.ts
 
-import { GoogleGenAI, Modality, Part, FileMetadata, FileState } from "npm:@google/genai"; // 导入需要的类型
+import { GoogleGenAI, Modality, Part, FileMetadata, FileState, Content } from "npm:@google/genai"; // 导入需要的类型
 import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 
-// 辅助函数：轮询文件状态
+// pollFileState 辅助函数保持不变 (来自上一条回复)
 async function pollFileState(
   ai: GoogleGenAI,
-  fileNameInApi: string, // 这是 files.upload 返回的 file.name，例如 "files/xxxx"
+  fileNameInApi: string,
   maxRetries = 10,
-  delayMs = 5000 // 5秒轮询一次
+  delayMs = 5000
 ): Promise<FileMetadata> {
   for (let i = 0; i < maxRetries; i++) {
     try {
       console.log(`轮询文件状态 (${i + 1}/${maxRetries}): ${fileNameInApi}`);
-      const fileMeta = await ai.files.get({ name: fileNameInApi }); // 使用 get 方法获取最新状态
+      const fileMeta = await ai.files.get({ name: fileNameInApi });
 
       if (fileMeta.state === FileState.ACTIVE) {
         console.log(`文件 ${fileNameInApi} 状态已变为 ACTIVE. URI: ${fileMeta.uri}`);
@@ -22,17 +22,15 @@ async function pollFileState(
         console.error(`文件 ${fileNameInApi} 处理失败:`, fileMeta.error || "未知错误");
         throw new Error(`文件 ${fileNameInApi} 处理失败: ${fileMeta.error?.message || "未知错误"}`);
       }
-      // 如果是 PROCESSING 或其他非最终状态，则等待后重试
       console.log(`文件 ${fileNameInApi} 当前状态: ${fileMeta.state}, 等待 ${delayMs / 1000} 秒后重试...`);
       await new Promise(resolve => setTimeout(resolve, delayMs));
 
     } catch (error) {
-      // files.get 也可能失败
       console.error(`轮询文件 ${fileNameInApi} 状态时发生错误:`, error);
-      if (i === maxRetries - 1) { // 最后一次尝试失败则抛出
+      if (i === maxRetries - 1) {
           throw error;
       }
-      await new Promise(resolve => setTimeout(resolve, delayMs)); // 等待后重试
+      await new Promise(resolve => setTimeout(resolve, delayMs));
     }
   }
   throw new Error(`文件 ${fileNameInApi} 在 ${maxRetries} 次尝试后仍未变为 ACTIVE 状态。`);
@@ -73,8 +71,6 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
       if (shouldUseFileAPI) {
         console.log(`正在通过 File API 上传文件: ${file.name}, 类型: ${file.type}, 大小: ${(file.size / (1024 * 1024)).toFixed(2)}MB`);
         
-        // files.upload() 返回的是 UploadFileResponse，但我们实际观察到它直接返回了 FileMetadata 结构
-        // 为了代码健壮性，我们先假设它可能返回 UploadFileResponse，再检查直接属性
         // deno-lint-ignore no-explicit-any
         const uploadResponse: any = await aiForFiles.files.upload({
           file: file,
@@ -84,8 +80,6 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
           }
         });
 
-        // 从 uploadResponse 中提取 FileMetadata
-        // SDK 定义是 uploadResponse.file，但日志显示 uploadResponse 直接就是 FileMetadata
         const initialFileMeta: FileMetadata = uploadResponse.file || uploadResponse;
 
         if (!initialFileMeta || !initialFileMeta.uri || !initialFileMeta.name) {
@@ -104,28 +98,24 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
         } else if (initialFileMeta.state === FileState.FAILED) {
             console.error(`文件 ${initialFileMeta.name} 上传后即为 FAILED 状态:`, initialFileMeta.error);
             throw new Error(`文件 ${initialFileMeta.name} 上传失败: ${initialFileMeta.error?.message || "未知上传错误"}`);
-        }
-         else {
-          // 对于UNSPECIFIED或其他未知状态，也尝试轮询，或者直接报错
+        } else {
           console.warn(`文件 ${initialFileMeta.name} 状态未知 (${initialFileMeta.state}), 尝试轮询...`);
           activeFileMeta = await pollFileState(aiForFiles, initialFileMeta.name);
         }
         
-        // 确保 activeFileMeta 存在且 URI 有效
-        if (!activeFileMeta || !activeFileMeta.uri) {
+        if (!activeFileMeta || !activeFileMeta.uri) { // 这里的 uri 是 FileMetadata.uri
              console.error("Failed to get active file metadata or URI is missing after polling for file:", file.name, activeFileMeta);
              throw new Error(`轮询后未能获取活动文件元数据或URI丢失: ${file.name}`);
         }
 
-
         contents.push({
           fileData: {
-            mimeType: activeFileMeta.mimeType, // 使用从元数据获取的MIME类型
-            uri: activeFileMeta.uri,
+            mimeType: activeFileMeta.mimeType,
+            fileUri: activeFileMeta.uri, // <--- *** 关键修正点 ***
           },
         });
 
-      } else { // Base64 编码逻辑保持不变
+      } else {
         console.log(`正在进行 Base64 编码: ${file.name}, 类型: ${file.type}, 大小: ${(file.size / (1024 * 1024)).toFixed(2)}MB`);
         const fileBuffer = await file.arrayBuffer();
         const base64Data = encodeBase64(new Uint8Array(fileBuffer));
@@ -173,12 +163,11 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
   return contents;
 }
 
-// processAIRequest 函数保持不变 (使用上一版本给出的)
-// ... (processAIRequest 函数的完整代码，如上一条回复所示) ...
+// processAIRequest 函数保持不变 (使用上一版本给出的，它已经正确处理非流式响应的 result 结构)
 export async function processAIRequest(
   model: string,
   apikey: string,
-  contents: Content[],
+  contents: Content[], 
   streamEnabled: boolean,
   responseModalities: Modality[] = []
 ): Promise<ReadableStream<Uint8Array> | Array<Part>> {
@@ -248,14 +237,16 @@ export async function processAIRequest(
         detailedMessage += ` - ${error.message}`;
         // deno-lint-ignore no-explicit-any
         const googleError = error as any;
-        if (googleError.error && googleError.error.message) {
+        if (googleError.error && googleError.error.message) { // Google API 返回的 JSON 错误体
             detailedMessage += ` (Google API Error: ${googleError.error.message})`;
         } else if (googleError.message && googleError.message.includes("API key not valid")) {
             detailedMessage += ` (请检查API Key是否有效或已启用Gemini API)`;
         } else if (googleError.message && googleError.message.includes("User location is not supported")){
              detailedMessage += ` (Google API 错误: 用户地理位置不支持此操作，请检查代理或VPN设置)`;
-        } else if (googleError.response && googleError.response.promptFeedback) {
+        } else if (googleError.response && googleError.response.promptFeedback) { // SDK 封装的错误可能包含 response.promptFeedback
              detailedMessage += ` (请求可能因安全或其他策略被阻止: ${JSON.stringify(googleError.response.promptFeedback)})`;
+        } else if (googleError.message && googleError.message.includes("Invalid JSON payload received")) { // 捕获这类错误
+             detailedMessage += ` (Google API Error: ${googleError.message})`; // 直接使用错误消息
         }
     } else if (typeof error === 'object' && error !== null) {
         // deno-lint-ignore no-explicit-any
