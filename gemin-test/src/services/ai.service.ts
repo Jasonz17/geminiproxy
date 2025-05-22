@@ -2,13 +2,13 @@
 
 import {
   GoogleGenAI,
-  Modality, // 确保 Modality 被导入
+  Modality,
   Part,
   FileMetadata,
   FileState,
   Content,
   GenerateContentRequest,
-  // GenerationConfig // 不再直接使用 GenerationConfig 来设置 responseModalities
+  // GenerationConfig // 我们现在直接在请求中构建 config
 } from "npm:@google/genai";
 import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 
@@ -195,14 +195,13 @@ export async function parseFormDataToContents(formData: FormData, inputText: str
   return partsAccumulator;
 }
 
+
 export async function processAIRequest(
   modelName: string,
   apikey: string,
   historyContents: Content[],
   streamEnabled: boolean,
-  // 这个参数现在不再直接用于图像生成模型的 responseMimeTypes
-  // 而是作为一个通用的、可由其他模型使用的配置
-  _requestedResponseMimeTypes: string[] = [] // 加下划线表示它可能不被图像生成直接使用
+  _requestedResponseMimeTypes: string[] = []
 ): Promise<ReadableStream<Uint8Array> | Array<Part>> {
   if (!apikey) {
     throw new Error("API Key is missing.");
@@ -227,36 +226,30 @@ export async function processAIRequest(
   }
   console.log(`最终发送给 ${modelName} 的 contents 部分:`, JSON.stringify(finalContentsForAPI, null, 2));
 
-  // *** 核心修正：构建请求对象，严格按照文档示例和您的反馈 ***
   // deno-lint-ignore no-explicit-any
-  const requestOptions: any = {
+  const requestOptions: any = { // 使用 any 类型以允许添加 config.responseModalities
     contents: finalContentsForAPI,
   };
 
   if (modelName === 'gemini-2.0-flash-preview-image-generation') {
-    // 直接在请求对象的顶层（如果SDK允许）或 config 属性中设置 responseModalities
-    // 根据官方文档，它应该在 config 内
-    requestOptions.config = {
-      responseModalities: [Modality.TEXT, Modality.IMAGE],
+    requestOptions.config = { // 直接在请求对象中添加 config 属性
+      responseModalities: [Modality.TEXT, Modality.IMAGE], // 使用 Modality 枚举
     };
     console.log(`为图像生成模型 (${modelName}) 设置 config:`, JSON.stringify(requestOptions.config));
   } else {
-    // 对于其他模型，如果需要设置 responseMimeTypes，则通过 generationConfig
     if (_requestedResponseMimeTypes.length > 0) {
+      // 对于其他模型，如果需要，则使用 generationConfig 和 responseMimeTypes
       requestOptions.generationConfig = {
         responseMimeTypes: _requestedResponseMimeTypes,
       };
       console.log(`模型 (${modelName}): 设置 generationConfig.responseMimeTypes =`, _requestedResponseMimeTypes);
     }
   }
-  // *** 修正结束 ***
   console.log(`构建的 requestOptions (传递给 generateContent/Stream):`, JSON.stringify(requestOptions, null, 2));
 
 
   try {
     if (streamEnabled) {
-      // @google/genai 的 generateContentStream 接受 (modelName, request) 或 (requestWithName)
-      // 我们使用后者，将 modelName 放入请求对象中
       const streamRequest = { model: modelName, ...requestOptions };
       const streamResult = await aiForGenerate.models.generateContentStream(streamRequest);
 
@@ -279,27 +272,32 @@ export async function processAIRequest(
       });
     } else { // 非流式
       const nonStreamRequest = { model: modelName, ...requestOptions };
-      const result = await aiForGenerate.models.generateContent(nonStreamRequest);
+      // deno-lint-ignore no-explicit-any
+      const result: any = await aiForGenerate.models.generateContent(nonStreamRequest); // result 直接就是响应
 
-      if (result.response && result.response.candidates && result.response.candidates.length > 0 && result.response.candidates[0].content && result.response.candidates[0].content.parts) {
-        return result.response.candidates[0].content.parts;
-      } else { /* ... (错误处理逻辑不变) ... */ 
-        console.error("AI服务返回了意外的结构 (non-stream). 实际响应 (result.response):", JSON.stringify(result.response, null, 2));
-        if (result.response && result.response.promptFeedback) {
-            console.error("Prompt Feedback (non-stream):", JSON.stringify(result.response.promptFeedback, null, 2));
-            const blockReason = result.response.promptFeedback.blockReason;
+      // *** 核心修正：直接从 result 读取 candidates ***
+      if (result && result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts) {
+        const parts = result.candidates[0].content.parts;
+        const hasImage = parts.some(part => part.inlineData && part.inlineData.mimeType?.startsWith('image/'));
+        const hasText = parts.some(part => part.text);
+        console.log(`非流式响应: 包含图片? ${hasImage}, 包含文本? ${hasText}. Parts:`, JSON.stringify(parts));
+        return parts;
+      } else { 
+        // 如果上面的条件不满足，记录详细的 result 结构
+        console.error("AI服务返回了意外的结构 (non-stream). 实际响应 (result):", JSON.stringify(result, null, 2));
+        // 检查是否有 promptFeedback，这可能指示请求被阻止的原因
+        if (result && result.promptFeedback) { // 直接从 result 检查 promptFeedback
+            console.error("Prompt Feedback (non-stream):", JSON.stringify(result.promptFeedback, null, 2));
+            const blockReason = result.promptFeedback.blockReason;
             if (blockReason) {
-                throw new Error(`请求可能因安全或其他策略被阻止 (non-stream): ${blockReason}.详情: ${JSON.stringify(result.response.promptFeedback.safetyRatings)}`);
+                throw new Error(`请求可能因安全或其他策略被阻止 (non-stream): ${blockReason}.详情: ${JSON.stringify(result.promptFeedback.safetyRatings)}`);
             }
-        }
-        if (!result.response) {
-            console.error("AI服务返回的 result 对象中缺少 response 属性. 完整 result:", JSON.stringify(result, null, 2));
         }
         throw new Error("AI服务返回了意外的结构 (non-stream)");
       }
     }
   } catch (error) {
-    // ... (错误处理逻辑保持不变) ...
+    // ... (错误处理逻辑不变) ...
     console.error("Error generating content from AI model:", error);
     let detailedMessage = `AI模型生成内容错误`;
     if (error instanceof Error) {
@@ -310,7 +308,7 @@ export async function processAIRequest(
             detailedMessage += ` (Google API Error: ${googleError.error.message})`;
         } else if (googleError.message && (googleError.message.includes("API key not valid") || googleError.message.includes("User location is not supported") || googleError.message.includes("Invalid JSON payload received") || googleError.message.includes("The requested combination of response modalities is not supported"))) {
             detailedMessage += ` (${googleError.message})`;
-        } else if (googleError.response && googleError.response.promptFeedback) {
+        } else if (googleError.response && googleError.response.promptFeedback) { // 对于 ClientError，错误响应在 googleError.response
              detailedMessage += ` (请求可能因安全或其他策略被阻止: ${JSON.stringify(googleError.response.promptFeedback)})`;
         } else if (googleError.details && Array.isArray(googleError.details) && googleError.details.length > 0 && googleError.details[0].fieldViolations) {
             detailedMessage += ` (字段验证错误: ${JSON.stringify(googleError.details[0].fieldViolations)})`;
@@ -320,7 +318,7 @@ export async function processAIRequest(
         const errorObj = error as any;
         if (errorObj.error && errorObj.error.message) {
              detailedMessage += ` - Google API 错误: ${errorObj.error.message}`;
-        } else if (errorObj.response && errorObj.response.promptFeedback) {
+        } else if (errorObj.response && errorObj.response.promptFeedback) { // 同样检查 response
              detailedMessage += ` (请求可能因安全或其他策略被阻止: ${JSON.stringify(errorObj.response.promptFeedback)})`;
         } else {
             try {
