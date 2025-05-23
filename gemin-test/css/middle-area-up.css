@@ -174,6 +174,13 @@
 }
 
 /* Markdown 样式 */
+
+/* 覆盖消息内容中p标签的默认样式 */
+.message p {
+    margin: 0;  /* 移除所有外边距 */
+    padding: 0; /* 移除所有内边距 */
+}
+
 .message pre {
     background-color: #f3f3f3;
     padding: 10px;
@@ -299,3 +306,5 @@ body.dark-mode {
 .message-displayed-file a:hover {
     text-decoration: underline;
 }
+
+
