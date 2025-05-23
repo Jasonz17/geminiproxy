@@ -3,11 +3,10 @@
 // 显示消息的函数
 export function displayMessage(message, chatDisplay) {
     const messageElement = document.createElement('div');
-    messageElement.classList.add('message');
     if (message.type === 'user') {
-        messageElement.classList.add('user-message');
+        messageElement.classList.add('message', 'user');
     } else if (message.type === 'ai') {
-        messageElement.classList.add('ai-message');
+        messageElement.classList.add('message', 'ai');
     }
 
     // 添加marked库的CDN引用 (确保只加载一次)
