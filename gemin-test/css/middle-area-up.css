@@ -11,14 +11,14 @@
     padding: 15px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 5px;
     scroll-behavior: smooth; /* 平滑滚动 */
 }
 
 /* 所有消息的通用样式 */
 .message {
     max-width: 70%; /* 消息最大宽度 */
-    padding: 10px 5px; /* <--- 关键修改：增加内边距，形成气泡感 */
+    padding: 8px 5px; /* 调整上下内边距减小间距 */
     border-radius: 18px; /* <--- 关键修改：增大圆角，更像气泡 */
     font-size: 0.95em; /* 稍微调整字体大小 */
     line-height: 1.4; /* 改善行高可读性 */
