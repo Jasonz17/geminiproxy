@@ -62,7 +62,7 @@
 
 /* Font size reduction for model info labels */
 .left-settings .setting-group label {
-    font-size: 9px !important;
+    font-size: 14px !important;
 }
 
 
@@ -74,7 +74,7 @@
     display: block;
     margin-bottom: 8px; /* Increased margin */
     font-weight: bold;
-    font-size: 14px; /* 减小字体（原16px-1号） */
+    font-size: 19px; /* 增大字号 */
 }
 
 #model-info p {
