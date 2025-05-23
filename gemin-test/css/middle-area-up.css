@@ -27,27 +27,31 @@
     word-wrap: break-word; /* 单词过长时换行 */
     white-space: pre-wrap; /* 保留空白和换行 */
     box-shadow: 0 1px 0.5px rgba(0, 0, 0, 0.13);
-    margin-top: 4px !important;
-    margin-bottom: 4px !important;
+    margin-top: 4px;
+    margin-bottom: 4px;
     overflow-wrap: break-word;
 }
 
 /* 用户消息样式 (右对齐，绿色背景) */
 .user-message {
-    background-color: var(--user-message-color, #dcf8c6); /* 淡绿色气泡 */
-    color: var(--user-message-text-color, #333); /* 消息文字颜色 */
-    align-self: flex-end; /* 在 Flex 容器中靠右对齐 */
-    margin-left: auto; /* 自动左边距，配合 align-self 实现右对齐 */
-    text-align: left; /* 消息内容本身左对齐 */
+    background-color: var(--user-message-color, #dcf8c6);
+    color: var(--user-message-text-color, #333);
+    align-self: flex-end;
+    margin-left: auto;
+    text-align: left;
+    margin-top: 4px;
+    margin-bottom: 4px;
 }
 
 /* AI 消息样式 (左对齐，灰色背景) */
 .ai-message {
-    background-color: var(--ai-message-color, #ffffff); /* 白色或浅灰色气泡 */
-    color: var(--ai-message-text-color, #333); /* 消息文字颜色 */
-    align-self: flex-start; /* 在 Flex 容器中靠左对齐 */
-    margin-right: auto; /* 自动右边距，配合 align-self 实现左对齐 */
-    text-align: left; /* 消息内容本身左对齐 */
+    background-color: var(--ai-message-color, #ffffff);
+    color: var(--ai-message-text-color, #333);
+    align-self: flex-start;
+    margin-right: auto;
+    text-align: left;
+    margin-top: 4px;
+    margin-bottom: 4px;
 }
 
 /* 聊天气泡外下方的文件预览容器样式 (用户消息的文件预览) */
