@@ -20,10 +20,10 @@
 /* 所有消息的通用样式 */
 .message {
     max-width: 70%; /* 消息最大宽度 */
-    padding: 6px 12px; /* 优化内边距 */
-    border-radius: 18px; /* <--- 关键修改：增大圆角，更像气泡 */
-    font-size: 0.95em; /* 稍微调整字体大小 */
-    line-height: 1.2; /* 优化行高显示 */
+    padding: 4px 12px; /* 减小上下内边距 */
+    border-radius: 18px;
+    font-size: 0.95em;
+    line-height: 1.1; /* 减小行高 */
     word-wrap: break-word; /* 单词过长时换行 */
     white-space: pre-wrap; /* 保留空白和换行 */
     box-shadow: 0 1px 0.5px rgba(0, 0, 0, 0.13);
@@ -40,8 +40,6 @@
     align-self: flex-end;
     margin-left: auto;
     text-align: left;
-    margin-top: 4px;
-    margin-bottom: 4px;
 }
 
 /* AI 消息样式 (左对齐，灰色背景) */
@@ -51,8 +49,6 @@
     align-self: flex-start;
     margin-right: auto;
     text-align: left;
-    margin-top: 4px;
-    margin-bottom: 4px;
 }
 
 /* 聊天气泡外下方的文件预览容器样式 (用户消息的文件预览) */
