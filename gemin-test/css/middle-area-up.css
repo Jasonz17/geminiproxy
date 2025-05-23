@@ -173,8 +173,9 @@
 
 /* 覆盖消息内容中p标签的默认样式 */
 .message p {
-    margin: 0;  /* 移除所有外边距 */
-    padding: 0; /* 移除所有内边距 */
+    margin: 0 !important;  /* 移除所有外边距，使用 !important 确保覆盖浏览器默认样式 */
+    padding: 0 !important; /* 移除所有内边距，使用 !important 确保覆盖浏览器默认样式 */
+    min-height: 0 !important; /* 确保不会有最小高度限制 */
 }
 
 .message pre {
