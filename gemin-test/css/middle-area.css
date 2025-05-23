@@ -9,7 +9,6 @@
     padding: 5px; /* 减少内边距 */
     border-radius: 15px; /* 增大圆角 */
     box-sizing: border-box;
-    border: 1px solid #000; /* Add black border */
     margin-right: 15px; /* 保留右边间隙 */
     margin-bottom: 15px; /* 增加底部15px间隙 */
     transition: all 0.3s ease;
