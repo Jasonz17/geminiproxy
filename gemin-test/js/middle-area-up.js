@@ -3,7 +3,12 @@
 // 显示消息的函数
 export function displayMessage(message, chatDisplay) {
     const messageElement = document.createElement('div');
-    messageElement.classList.add('message', message.type === 'user' ? 'user-message' : 'ai-message');
+    messageElement.classList.add('message');
+    if (message.type === 'user') {
+        messageElement.classList.add('user-message');
+    } else if (message.type === 'ai') {
+        messageElement.classList.add('ai-message');
+    }
 
     // 添加marked库的CDN引用 (确保只加载一次)
     if (!window.marked) {
@@ -85,7 +90,16 @@ export function displayMessage(message, chatDisplay) {
             if (textContent) {
                 // 将 marked 渲染后的文本放在一个 div 中，以便和媒体元素分开管理
                 const textDiv = document.createElement('div');
-                textDiv.innerHTML = marked.parse(textContent);
+                // 配置 marked 选项，禁用自动段落包装
+            marked.setOptions({
+                breaks: true,  // 将换行符转换为 <br>
+                gfm: true,     // 启用 GitHub 风格的 Markdown
+                headerIds: false,  // 禁用标题ID
+                mangle: false,     // 禁用段落ID
+                smartLists: true,  // 优化列表输出
+                smartypants: false // 禁用智能标点转换
+            });
+            textDiv.innerHTML = marked.parse(textContent);
                 messageElement.appendChild(textDiv);
             }
             // 将所有媒体和文件元素添加到消息元素
@@ -93,6 +107,15 @@ export function displayMessage(message, chatDisplay) {
         } else {
             // 处理纯文本响应或用户消息
             const textDiv = document.createElement('div');
+            // 配置 marked 选项，禁用自动段落包装
+            marked.setOptions({
+                breaks: true,  // 将换行符转换为 <br>
+                gfm: true,     // 启用 GitHub 风格的 Markdown
+                headerIds: false,  // 禁用标题ID
+                mangle: false,     // 禁用段落ID
+                smartLists: true,  // 优化列表输出
+                smartypants: false // 禁用智能标点转换
+            });
             textDiv.innerHTML = marked.parse(message.content.toString());
             messageElement.appendChild(textDiv);
         }
