@@ -29,7 +29,6 @@
     margin-top: 4px;
     margin-bottom: 4px;
     overflow-wrap: break-word;
-    background-color: #ffffff; /* 默认白色背景 */
 }
 
 /* 用户消息样式 (右对齐，绿色背景) */
@@ -48,6 +47,7 @@
     align-self: flex-start;
     margin-right: auto;
     text-align: left;
+    margin-bottom: 8px !important; /* 增加消息之间的间距 */
 }
 
 /* 聊天气泡外下方的文件预览容器样式 (用户消息的文件预览) */
@@ -171,9 +171,14 @@
 
 /* 覆盖消息内容中p标签的默认样式 */
 .message p {
-    margin: 0 !important;  /* 移除所有外边距，使用 !important 确保覆盖浏览器默认样式 */
-    padding: 0 !important; /* 移除所有内边距，使用 !important 确保覆盖浏览器默认样式 */
+    margin: 0 0 4px 0 !important;  /* 只保留底部间距 */
+    padding: 0 !important; /* 移除所有内边距 */
     min-height: 0 !important; /* 确保不会有最小高度限制 */
+}
+
+/* 最后一个段落不需要底部间距 */
+.message p:last-child {
+    margin-bottom: 0 !important;
 }
 
 .message pre {
@@ -213,12 +218,12 @@
 
 /* 标题 */
 .message h1, .message h2, .message h3, .message h4, .message h5, .message h6 {
-    margin-top: 15px;
-    margin-bottom: 8px;
+    margin-top: 8px !important;
+    margin-bottom: 4px !important;
     font-weight: bold;
 }
-.message h1 { font-size: 1.5em; }
-.message h2 { font-size: 1.3em; }
+.message h1 { font-size: 1.3em; }
+.message h2 { font-size: 1.2em; }
 .message h3 { font-size: 1.1em; }
 
 /* 引用块 */
