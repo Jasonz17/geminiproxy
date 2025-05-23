@@ -32,7 +32,7 @@
 }
 
 /* 用户消息样式 (右对齐，绿色背景) */
-.user-message {
+.message.user {
     background-color: var(--user-message-color, #dcf8c6);
     color: var(--user-message-text-color, #333);
     align-self: flex-end;
@@ -41,7 +41,7 @@
 }
 
 /* AI 消息样式 (左对齐，灰色背景) */
-.ai-message {
+.message.ai {
     background-color: #f5f5f5 !important; /* 浅灰色背景，使用 !important 确保覆盖 */
     color: var(--ai-message-text-color, #333);
     align-self: flex-start;
