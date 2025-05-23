@@ -2,19 +2,21 @@
 /* 上部聊天显示区域样式 */
 
 #chat-display {
+    align-items: flex-start;
+    flex-basis: auto;
     flex-grow: 1;
     flex-shrink: 1;
     flex-basis: 0;
     overflow-y: auto;
     margin-bottom: 10px;
-    background-color: var(--chat-background-color, #f0f2f5); /* 默认背景色 */
+    background-color: var(--chat-background-color, #f0f2f5);
     padding: 15px;
     display: flex;
     flex-direction: column;
     gap: 5px;
-    scroll-behavior: smooth; /* 平滑滚动 */
+    scroll-behavior: smooth;
 }
-
+    
 /* 所有消息的通用样式 */
 .message {
     max-width: 70%; /* 消息最大宽度 */
@@ -24,8 +26,10 @@
     line-height: 1.2; /* 优化行高显示 */
     word-wrap: break-word; /* 单词过长时换行 */
     white-space: pre-wrap; /* 保留空白和换行 */
-    box-shadow: 0 1px 0.5px rgba(0, 0, 0, 0.13); /* 添加细微阴影 */
-    overflow-wrap: break-word; /* 确保长单词在不使用 word-wrap 时也能换行 */
+    box-shadow: 0 1px 0.5px rgba(0, 0, 0, 0.13);
+    margin-block-start: 4px;
+    margin-block-end: 4px;
+    overflow-wrap: break-word;
 }
 
 /* 用户消息样式 (右对齐，绿色背景) */
