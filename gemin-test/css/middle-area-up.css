@@ -18,10 +18,10 @@
 /* 所有消息的通用样式 */
 .message {
     max-width: 70%; /* 消息最大宽度 */
-    padding: 8px 5px; /* 调整上下内边距减小间距 */
+    padding: 6px 12px; /* 优化内边距 */
     border-radius: 18px; /* <--- 关键修改：增大圆角，更像气泡 */
     font-size: 0.95em; /* 稍微调整字体大小 */
-    line-height: 1.4; /* 改善行高可读性 */
+    line-height: 1.2; /* 优化行高显示 */
     word-wrap: break-word; /* 单词过长时换行 */
     white-space: pre-wrap; /* 保留空白和换行 */
     box-shadow: 0 1px 0.5px rgba(0, 0, 0, 0.13); /* 添加细微阴影 */
@@ -50,7 +50,7 @@
 .message-file-preview-container {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
+    gap: 6px;
     margin-top: 5px;
     clear: both; /* 清除浮动 */
     max-width: 70%; /* 确保与消息宽度一致 */
