@@ -1,311 +1,183 @@
-/* middle-area-up.css */
-/* 上部聊天显示区域样式 */
+// js/middle-area-up.js
 
-#chat-display {
-    align-items: flex-start;
-    flex-basis: auto;
-    flex-grow: 1;
-    flex-shrink: 1;
-    flex-basis: 0;
-    overflow-y: auto;
-    margin-bottom: 10px;
-    background-color: #ffffff;
-    padding: 15px;
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    scroll-behavior: smooth;
-}
-    
-/* 所有消息的通用样式 */
-.message {
-    max-width: 70%; /* 消息最大宽度 */
-    padding: 4px 12px; /* 减小上下内边距 */
-    border-radius: 18px;
-    font-size: 0.95em;
-    line-height: 1.1; /* 减小行高 */
-    word-wrap: break-word; /* 单词过长时换行 */
-    white-space: pre-wrap; /* 保留空白和换行 */
-    margin-top: 4px;
-    margin-bottom: 4px;
-    overflow-wrap: break-word;
-}
+// 显示消息的函数
+export function displayMessage(message, chatDisplay) {
+    const messageElement = document.createElement('div');
+    if (message.type === 'user') {
+        messageElement.classList.add('message', 'user');
+    } else if (message.type === 'ai') {
+        messageElement.classList.add('message', 'ai');
+    }
 
-/* 用户消息样式 (右对齐，绿色背景) */
-.message.user {
-    background-color: var(--user-message-color, #dcf8c6);
-    color: var(--user-message-text-color, #333);
-    align-self: flex-end;
-    margin-left: auto;
-    text-align: left;
-}
+    // 确保 marked 库已加载并设置好选项
+    const ensureMarkedIsReady = (callback) => {
+        if (!window.marked) {
+            const markedScript = document.createElement('script');
+            markedScript.src = 'https://cdn.jsdelivr.net/npm/marked/marked.min.js';
+            markedScript.onload = () => {
+                window.marked.setOptions({
+                    breaks: true,        // 将换行符转换为 <br>
+                    gfm: true,           // 启用 GitHub 风格的 Markdown
+                    headerIds: false,    // 禁用标题ID
+                    mangle: false,       // 禁用邮件地址混淆（如果你的 marked 版本支持）
+                    // pedantic: false,  // 如果需要，可以关闭一些严格模式，但通常 gfm:true 更好
+                    smartLists: true,    // 优化列表输出
+                    smartypants: false   // 禁用智能标点转换
+                });
+                callback();
+            };
+            document.head.appendChild(markedScript);
+        } else {
+            // 如果 marked 已加载，确保选项是最新的（可选，如果选项固定不变则不需要每次都设置）
+            // 为了简单起见，这里可以假设如果 marked 存在，选项已经被正确设置过一次
+            // 或者，为了保险起见，可以再次设置：
+            // window.marked.setOptions({ /* ... 你的选项 ... */ });
+            callback();
+        }
+    };
 
-/* AI 消息样式 (左对齐，灰色背景) */
-.message.ai {
-    background-color: #f5f5f5 !important; /* 浅灰色背景，使用 !important 确保覆盖 */
-    color: var(--ai-message-text-color, #333);
-    align-self: flex-start;
-    margin-right: auto;
-    text-align: left;
-    margin-bottom: 8px !important; /* 增加消息之间的间距 */
-    padding: 10px;
-}
+    ensureMarkedIsReady(() => {
+        renderMessageContent();
+    });
 
-/* 聊天气泡外下方的文件预览容器样式 (用户消息的文件预览) */
-.message-file-preview-container {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 5px;
-    clear: both; /* 清除浮动 */
-    max-width: 70%; /* 确保与消息宽度一致 */
-    align-self: flex-end; /* 用户文件的预览也靠右对齐 */
-}
+    function renderMessageContent() {
+        let textContent = '';
+        let mediaAndFileElements = []; // 用于存储图片、视频、音频和文件链接元素
 
-.message-preview-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 5px;
-    width: 80px; /* 固定宽度 */
-    height: 100px; /* 固定高度，包含文字 */
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    padding: 5px;
-    background-color: #f9f9f9;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-    overflow: hidden; /* 防止内容溢出 */
-}
+        // message.content 可以是字符串（纯文本），也可以是AI返回的 parts 数组
+        if (Array.isArray(message.content)) {
+            message.content.forEach(part => {
+                if (part.text) {
+                    textContent += part.text;
+                } else if (part.inlineData) {
+                    const imgElement = document.createElement('img');
+                    imgElement.src = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                    imgElement.alt = 'Generated Image';
+                    imgElement.style.maxWidth = '100%';
+                    imgElement.style.height = 'auto';
+                    mediaAndFileElements.push(imgElement);
+                } else if (part.fileData) {
+                    const mimeType = part.fileData.mimeType;
+                    const uri = part.fileData.uri;
 
-.message-preview-item img {
-    max-width: 100%;
-    max-height: 80%; /* 留出空间给文件名 */
-    object-fit: contain;
-    border-radius: 4px;
-}
+                    if (mimeType.startsWith('image/')) {
+                        const imgElement = document.createElement('img');
+                        imgElement.src = uri;
+                        imgElement.alt = 'Uploaded Image';
+                        imgElement.style.maxWidth = '100%';
+                        imgElement.style.height = 'auto';
+                        mediaAndFileElements.push(imgElement);
+                    } else if (mimeType.startsWith('video/')) {
+                        const videoElement = document.createElement('video');
+                        videoElement.src = uri;
+                        videoElement.controls = true;
+                        videoElement.style.maxWidth = '100%';
+                        videoElement.style.height = 'auto';
+                        mediaAndFileElements.push(videoElement);
+                    } else if (mimeType.startsWith('audio/')) {
+                        const audioElement = document.createElement('audio');
+                        audioElement.src = uri;
+                        audioElement.controls = true;
+                        audioElement.style.maxWidth = '100%';
+                        mediaAndFileElements.push(audioElement);
+                    } else {
+                        const fileLinkDiv = document.createElement('div');
+                        fileLinkDiv.classList.add('message-displayed-file');
+                        const fileName = uri.substring(uri.lastIndexOf('/') + 1) || '文件';
+                        const cleanFileName = fileName.split('?')[0].split('#')[0];
+                        const fileIconSvg = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="file-icon"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>`;
+                        fileLinkDiv.innerHTML = `${fileIconSvg} <a href="${uri}" target="_blank" rel="noopener noreferrer">${cleanFileName} (${mimeType})</a>`;
+                        mediaAndFileElements.push(fileLinkDiv);
+                    }
+                }
+            });
 
-.message-file-name {
-    font-size: 11px;
-    color: #555;
-    text-align: center;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: normal; /* 允许文件名换行 */
-    word-wrap: break-word; /* 强制长文件名换行 */
-    line-height: 1.2;
-    flex-grow: 1; /* 占据剩余空间 */
-}
+            if (textContent) {
+                const textDiv = document.createElement('div');
+                // 1. 先 trim 原始文本，去除首尾可能存在的空白（包括换行符）
+                const processedText = textContent.trim();
+                // 2. 使用 marked 解析处理过的文本
+                const parsedHtml = window.marked.parse(processedText);
+                // 3. 对 marked 解析后的 HTML 字符串再次 trim，去除 marked 可能添加的末尾换行符
+                textDiv.innerHTML = parsedHtml.trim();
+                messageElement.appendChild(textDiv);
+            }
+            // 将所有媒体和文件元素添加到消息元素
+            mediaAndFileElements.forEach(el => messageElement.appendChild(el));
 
-/* AI生成图片的样式，如果图片是AI消息的一部分 */
-.ai-message img {
-    max-width: 100%;
-    height: auto;
-    border-radius: 8px;
-    margin-top: 10px; /* 如果文本和图片都在一个AI消息气泡内 */
-    display: block; /* 确保图片独占一行 */
-}
-
-/* 加载动画 */
-.loading-animation {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 60px; /* 动画容器大小 */
-    height: 40px;
-    background-color: #f5f5f5; /* 使用相同的浅灰色背景 */
-    border-radius: 18px;
-    padding: 5px 10px;
-    margin-right: auto; /* 左对齐 */
-}
-
-.dot-pulse {
-  position: relative;
-  width: 10px;
-  height: 10px;
-  border-radius: 5px;
-  background-color: var(--dot-color, #999);
-  color: var(--dot-color, #999);
-  animation: dotPulse 1.5s infinite ease-in-out;
-  animation-delay: -0.24s;
-}
-
-.dot-pulse::before, .dot-pulse::after {
-  content: "";
-  display: inline-block;
-  position: absolute;
-  top: 0;
-  width: 10px;
-  height: 10px;
-  border-radius: 5px;
-  background-color: var(--dot-color, #999);
-  color: var(--dot-color, #999);
-  animation: dotPulse 1.5s infinite ease-in-out;
-}
-
-.dot-pulse::before {
-  left: -15px;
-  animation-delay: -0.48s;
-}
-
-.dot-pulse::after {
-  left: 15px;
-  animation-delay: 0s;
-}
-
-@keyframes dotPulse {
-  0% {
-    transform: scale(0.8);
-    opacity: 0.7;
-  }
-  50% {
-    transform: scale(1.2);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(0.8);
-    opacity: 0.7;
-  }
-}
-
-/* Markdown 样式 */
-
-/* 覆盖消息内容中p标签的默认样式 */
-.message p {
-    margin: 0 0 4px 0 !important;  /* 只保留底部间距 */
-    padding: 0 !important; /* 移除所有内边距 */
-    min-height: 0 !important; /* 确保不会有最小高度限制 */
-}
-
-/* 最后一个段落不需要底部间距 */
-.message p:last-child {
-    margin-bottom: 0 !important;
-}
-
-.message pre {
-    background-color: #f3f3f3;
-    padding: 10px;
-    border-radius: 5px;
-    overflow-x: auto;
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 0.85em;
-    margin-top: 10px;
-    border: 1px solid #eee;
-}
-
-.message code {
-    background-color: #f3f3f3;
-    padding: 2px 4px;
-    border-radius: 3px;
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 0.9em;
-}
-
-/* 对于可能比 pre 更大的内联代码 */
-.message p code {
-    white-space: pre-wrap; /* 允许内联代码换行 */
-    word-break: break-all; /* 必要时在任意字符处断开 */
-}
-
-/* 列表 */
-.message ul, .message ol {
-    margin: 10px 0;
-    padding-left: 20px;
-}
-
-.message ul li, .message ol li {
-    margin-bottom: 5px;
-}
-
-/* 标题 */
-.message h1, .message h2, .message h3, .message h4, .message h5, .message h6 {
-    margin-top: 8px !important;
-    margin-bottom: 4px !important;
-    font-weight: bold;
-}
-.message h1 { font-size: 1.3em; }
-.message h2 { font-size: 1.2em; }
-.message h3 { font-size: 1.1em; }
-
-/* 引用块 */
-.message blockquote {
-    border-left: 4px solid #ccc;
-    padding-left: 10px;
-    color: #666;
-    margin: 10px 0;
-}
-
-/* 分隔线 */
-.message hr {
-    border: 0;
-    height: 1px;
-    background: #eee;
-    margin: 20px 0;
-}
-
-/* 链接 */
-.message a {
-    color: #007bff;
-    text-decoration: none;
-}
-.message a:hover {
-    text-decoration: underline;
-}
-
-/* 表格样式 */
-.message table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 15px 0;
-}
-.message th, .message td {
-    border: 1px solid #ddd;
-    padding: 8px;
-    text-align: left;
-}
-.message th {
-    background-color: #f2f2f2;
-}
-
-/* 暗色模式变量 (可选，如果你有暗色模式切换) */
-body.dark-mode {
-    --chat-background-color: #2c2c2c;
-    --user-message-color: #0056b3; /* 用户消息更深的蓝色 */
-    --user-message-text-color: #f0f0f0;
-    --ai-message-color: #3a3a3a; /* AI 消息更深的灰色 */
-    --ai-message-text-color: #f0f0f0;
-    --dot-color: #bbb;
-}
-
-/* 新增：用于显示历史记录中非图片文件的样式 */
-.message-displayed-file {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    background-color: #f0f0f0; /* 浅灰色背景 */
-    border-radius: 8px;
-    margin-top: 5px;
-    max-width: 100%;
-    word-break: break-all; /* 确保长文件名换行 */
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-}
-
-.message-displayed-file .file-icon {
-    flex-shrink: 0; /* 防止SVG被压缩 */
-    color: #6c757d; /* 图标颜色 */
-}
-
-.message-displayed-file a {
-    color: #007bff; /* 链接颜色 */
-    text-decoration: none;
-    font-size: 0.9em;
-    font-weight: bold;
-    word-break: break-all; /* 确保链接文本换行 */
-}
-
-.message-displayed-file a:hover {
-    text-decoration: underline;
-}
+        } else if (typeof message.content === 'string') { // 处理纯文本响应或用户消息
+            const textDiv = document.createElement('div');
+            // 1. 先 trim 原始文本
+            const processedText = message.content.trim();
+            // 2. 使用 marked 解析
+            const parsedHtml = window.marked.parse(processedText);
+            // 3. 对解析后的 HTML 字符串再次 trim
+            textDiv.innerHTML = parsedHtml.trim();
+            messageElement.appendChild(textDiv);
+        }
 
 
+        // 处理代码块的样式 (如果需要，可以移到CSS中)
+        messageElement.querySelectorAll('pre code').forEach(block => {
+            block.style.whiteSpace = 'pre-wrap';
+            block.style.wordBreak = 'break-word';
+        });
+
+        // 将消息元素添加到聊天显示区域
+        chatDisplay.appendChild(messageElement);
+
+        // 如果消息包含文件（来自用户消息，通常是当前发送的）
+        if (message.files && message.files.length > 0) {
+            const filePreviewContainer = document.createElement('div');
+            filePreviewContainer.classList.add('message-file-preview-container');
+
+            message.files.forEach(file => {
+                const previewItem = document.createElement('div');
+                previewItem.classList.add('message-preview-item');
+
+                if (file.type.startsWith('image/')) {
+                    const img = document.createElement('img');
+                    img.src = URL.createObjectURL(file);
+                    img.onload = () => URL.revokeObjectURL(img.src); // 释放对象 URL
+                    previewItem.appendChild(img);
+                } else {
+                    // 对于非图片文件，显示一个通用图标和文件名
+                    const iconDiv = document.createElement('div');
+                    // 你可以使用更复杂的SVG或字体图标
+                    iconDiv.innerHTML = '📄'; // 简单的文本图标
+                    iconDiv.style.fontSize = '24px'; // 调整图标大小
+                    iconDiv.style.textAlign = 'center';
+                    previewItem.appendChild(iconDiv);
+
+                    const fileNameDiv = document.createElement('div');
+                    fileNameDiv.classList.add('message-file-name');
+                    fileNameDiv.textContent = file.name;
+                    previewItem.appendChild(fileNameDiv);
+                }
+                filePreviewContainer.appendChild(previewItem);
+            });
+            // 将文件预览容器添加到聊天显示区域，位于消息元素下方
+            // 注意：如果用户消息和文件预览应该在同一个气泡内，则需要调整DOM结构
+            // 目前的逻辑是消息气泡后跟一个文件预览容器（如果文件来自用户输入）
+            chatDisplay.appendChild(filePreviewContainer);
+        }
+
+        // 确保滚动到最新消息
+        chatDisplay.scrollTop = chatDisplay.scrollHeight;
+    }
+}
+
+// 初始化聊天显示区域
+export function initializeChatDisplay() {
+    const chatDisplay = document.getElementById('chat-display');
+
+    // 确保 marked 加载和选项设置在显示欢迎消息之前完成
+    // 但由于 displayMessage 内部会处理 marked 加载，这里可以直接调用
+    const welcomeMessage = {
+        type: 'ai',
+        content: '你好！我是AI助手，很高兴为您服务。请问有什么我可以帮您的吗？'
+    };
+    displayMessage(welcomeMessage, chatDisplay);
+
+    return chatDisplay;
+}
