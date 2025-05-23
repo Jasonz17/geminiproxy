@@ -27,8 +27,8 @@
     word-wrap: break-word; /* 单词过长时换行 */
     white-space: pre-wrap; /* 保留空白和换行 */
     box-shadow: 0 1px 0.5px rgba(0, 0, 0, 0.13);
-    margin-block-start: 4px;
-    margin-block-end: 4px;
+    margin-top: 4px !important;
+    margin-bottom: 4px !important;
     overflow-wrap: break-word;
 }
 
