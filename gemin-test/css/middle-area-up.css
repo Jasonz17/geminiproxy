@@ -48,6 +48,7 @@
     margin-right: auto;
     text-align: left;
     margin-bottom: 8px !important; /* 增加消息之间的间距 */
+    padding: 10px;
 }
 
 /* 聊天气泡外下方的文件预览容器样式 (用户消息的文件预览) */
